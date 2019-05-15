@@ -1,0 +1,16 @@
+These scripts were used for the Cognitive Heterogeneity in Depression project
+
+Cognitive_heterogeneity_in_depression.Rmd - Contains the data subsetting, matching, and group level cognitive, clinical, anxiety and N-back analysis
+
+HYDRA scripts (to run HYDRA code):
+submit_run_hydra_experiment_csv_matched_age_and_sex_n1424_matched_imaging_plus_non_imaging - sends information to HYDRA
+matlab_script_to_get_subtypes_and_ARI - extracts ARI and Subtypes from output of HYDRA
+SaveHydraOutput_NEW.m - Saves output from HYDRA in a way that is viewable and usable by R analyses
+
+N-back
+prepForNbackNetworks.R - gets the subset of subjects who have imaging data and will be used in the n-back analysis
+afni_3dROIstats_script.sh - extracts mean percent signal change from each subject for each functionally defined ROI
+
+HYDRA code can be found at https://github.com/asotiras/HYDRA.
+
+Data from the Philadelphia Neurodevelopmental Cohort can be accessed at https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=phs000607.v3.p2
