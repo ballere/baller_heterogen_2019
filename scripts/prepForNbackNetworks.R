@@ -60,10 +60,6 @@ psych_health <- merge(psych_summary_no_NA_dep_and_smry_psych_overall, health, by
 dem_cnb_psych_health <- merge(dem_cnb, psych_health, by = "bblid") #merge all 4 csvs, lost 1 person (had demographics, but no psych ratings): N = 9405
 t1_fc_dem_cnb_psych_health_merged <- merge(t1_fc_include, dem_cnb_psych_health, by = "bblid") #N = 1111 when all combined
 
-#t1_qa_and_jlfvolume = merge(t1_struct_include, jlfvolume_summary, by = "bblid")
-#dem_psych_health_qa_volume_merged <- merge (dem_cnb_psych_health, t1_qa_and_jlfvolume, by = "bblid") 
-#dem_cnb_psych_health_factor_scores_merged <- merge(dem_cnb_psych_health_merged, cnb_factor_scores, by = "bblid")
-
 #make subsets
 subset_just_dep_and_no_medicalratingExclude <- subset.data.frame(t1_fc_dem_cnb_psych_health_merged, (medicalratingExclude == 0) & (smry_dep == 4), select = "bblid") 
 subset_no_psych_no_medicalratingExclude <- subset.data.frame(t1_fc_dem_cnb_psych_health_merged, (medicalratingExclude == 0) & (smry_psych_overall_rtg < 4), select = "bblid") 
