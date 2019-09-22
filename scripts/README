@@ -1,6 +1,7 @@
-These scripts were used for the Cognitive Heterogeneity in Depression project
+These scripts were used for the Neurocognitive and Functional Heterogeneity in Depressed Youth
 
-Cognitive_heterogeneity_in_depression.Rmd - Contains the data subsetting, matching, and group level cognitive, clinical, anxiety and N-back analysis
+Main analysis (details can be found in body of the .Rmd):
+Neurocognitive_and_Functional_heterogeneity_in_depressed_youth_main_analysis.Rmd - Contains the data subsetting, matching, and group level cognitive, clinical, anxiety and N-back analysis
 
 HYDRA scripts (to run HYDRA code):
 submit_run_hydra_experiment_csv_matched_age_and_sex_n1424_matched_imaging_plus_non_imaging - sends information to HYDRA
