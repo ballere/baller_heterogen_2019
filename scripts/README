@@ -1,7 +1,10 @@
 These scripts were used for the Neurocognitive and Functional Heterogeneity in Depressed Youth
 
 Main analysis (details can be found in body of the .Rmd):
-Neurocognitive_and_Functional_heterogeneity_in_depressed_youth_main_analysis.Rmd - Contains the data subsetting, matching, and group level cognitive, clinical, anxiety and N-back analysis
+Neurocognitive_and_Functional_heterogeneity_in_depressed_youth_main_analysis_molec_20191125.Rmd - Contains the data subsetting, matching, and group level cognitive, clinical, anxiety and N-back analysis
+
+Sensitivity analysis with youth who were not on medication: 
+Sensitivity_analysis_nomeds_20191125.Rmd
 
 HYDRA scripts (to run HYDRA code):
 submit_run_hydra_experiment_csv_matched_age_and_sex_n1424_matched_imaging_plus_non_imaging - sends information to HYDRA
@@ -13,5 +16,10 @@ prepForNbackNetworks.R - gets the subset of subjects who have imaging data and w
 afni_3dROIstats_script.sh - extracts mean percent signal change from each subject for each functionally defined ROI
 
 HYDRA code can be found at https://github.com/asotiras/HYDRA.
+
+HYDRA permutation analysis:
+hydra2018.m - hydra code
+run_hydra_experiment_csv_NC.m - healthy control group split in half (half served as controls, the other half as "pseudopatients"), permuted and run through HYDRA x 50
+run_hydra_experiment_csv_partialNCPatients.m - half of healthy gorup, half of patient group selected, permuted and run through HYDRA x 50
 
 Data from the Philadelphia Neurodevelopmental Cohort can be accessed at https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=phs000607.v3.p2
