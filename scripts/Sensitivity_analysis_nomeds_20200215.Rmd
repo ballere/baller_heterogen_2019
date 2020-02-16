@@ -1,0 +1,1135 @@
+---
+title: "Neurocognitive and Functional Heterogeneity in Depressed Youth Sensitivity Analysis - No meds"
+author: "Erica Baller"
+date: "02/15/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.width = 9)
+library(visreg)
+library(mgcv)
+library(tableone)
+library(dplyr)
+library(plm)
+library(MatchIt)
+library(tidyr)
+library(ggplot2)
+library(reshape)
+library(emmeans)
+library(MASS)
+library(effsize)
+require(cowplot)
+require(stringr)
+require(rasterVis)
+require(lattice)
+theme_update(plot.title = element_text(hjust = 0.5))
+
+#functions
+source("~/BBL/from_chead/ballerDepHeterogen/ballerDepHeterogenScripts/Hydra_functions.R")
+
+#baseline settings
+num_clusters <- 3
+total_num_groups <- num_clusters + 1
+cluster_titles <- get_cluster_titles(hydra_cluster = num_clusters)
+numeric_vector <- get_cluster_numerical_vector(hydra_cluster = num_clusters)
+groups_list <- data.frame(cbind(c(cluster_titles), c(numeric_vector)))
+names(groups_list) <- c("cl", "numeric")
+```
+
+This is the master document containing the final analyses for the project: 
+Neurocognitive and Functional Heterogeneity in Depressed Youth
+Specifically, this is a SENSITIVITY ANALYSIS, looking at youth who were not on medication
+
+Steps:
+
+
+1) Cognitive analysis
+- Results from HYDRA revealed highest ARI (0.39) for 3 subtype solution
+- CNB Factor Summary Scores (Accuracy, Speed, Efficiency) were evaluated
+- Results:
+   - Subtype 1: Cognition Preserved 
+   - Subtype 2: Cognition Impaired
+   - Subtype 3: Impulsive
+
+2) Clinical bifactor analysis
+- Bifactor scores were calculated (excluding measures that were used to classify depression in initial sample construction)
+- Subtypes were evaluated on 5 bifactor scores (anxious-misery, psychosis, externalizing, fear, and overall psychopathology)
+- Results:
+  - Between group differences were significant across subtypes (P(FDR) <0.001 for Anxious-misery, externalizing, fear, and overall)
+  - Pairwise (Tukey):
+    - All subtypes had higher psychopathology than TDs (P< 0.005)
+    - Subtypes 1 and 3 were indistinguishable on clinical factor scores (P= NS)
+    - Subtype 2 had higher fear scores than Subtypes 1 (0.45) and 3 (0.003) 
+
+3) Anxious-misery analysis
+- Anxious-misery factor scores were calculated separately from the State-Trait Anxiety Inventory (STAI)
+- Subtypes were evaluated on state and trait factors to verify cognitive differences were not due to current or lifetime anxious-misery
+- Results:
+  - All subtypes had significantly higher state (P(FDR) = 0.001) and trait (P(FDR)<0.001) anxiety
+    - State Pairwise: 
+      - Subtype 1 vs TD (P=0.031)
+      - Subtype 2 vs TD (P=0.029)
+      - Subtype 3 vs TD (P=0.058, NS)
+    - Trait Pairwise: All Subtypes vs TD (P<0.001)
+  - Subtypes 1-3 did NOT differ on EITHER state or trait anxiety (P=NS)
+
+4) Nback
+- Using 21 functionally defined regions of interest from Satterthwaite et al, 2013, percent signal change between 2bk and 0bk was evaluated by subtype
+- Results:
+  - 8 areas showed significant differences (P(FDR)<0.05) by subtype including 
+    - right crus I 
+    - right crus II *only significant in no meds group 
+    - right precuneus
+    - left precuneus
+    - dorsal anterior cingulate
+    - left dorsal frontal/mfg
+    - left dorsolateral prefrontal cortex 
+    - l partietal *only significant in no meds group 
+  - Effect size analysis also present
+
+5) Nback age-by-sex
+- For each of the 8 regions that showed between group differences that survived FDR correction (P(FDR) <0.05)), age by sex interactions were evaluated
+- Results: 
+  -For all areas, age by sex interactions were found to be non-significant (P(FDR) > 0.05)
+  
+6) Nback Age-by-group
+  - For each of the 8 regions that showed between group differences that survived FDR correction (P(FDR) <0.05)), age by group interactions were evaluated
+- Results: 
+  -For all areas, age by sex interactions were found to be non-significant (P(FDR) > 0.05)
+  
+7) Nback movement
+- For each of the 8 regions that showed between group differences that survived FDR correction (P(FDR) <0.05)), movement by group was evaluated
+- Results: 
+  -For all areas, age by sex interactions were found to be non-significant (P(FDR) > 0.05)
+
+6) Nback performance (DPrime)
+- Nback performance results during the task were calculated by subtype
+- Findings mimicked cognitive and n-back findings: Subtype 1> TD > Subtype 3 > Subtype 2
+
+
+
+```{r demographics}
+
+#### Youth without meds ####
+subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/cnb_results.rds")
+subset_with_clusters_matched <- subset_with_clusters_matched[which(is.na(subset_with_clusters_matched$medical_psychoactive_drug_count) & is.na(subset_with_clusters_matched$psych_psychoactive_drug_count)),] #removed 308, 1116 remaining
+listVars <- c("Race", "Sex", "Maternal Ed", "Age", "Depression") #Race 1 = caucasian, Maternal Ed = years, age = years, dep 1 = dep, 0 = non_dep
+
+demo <- data.frame(subset_with_clusters_matched$race_binarized, subset_with_clusters_matched$sex, subset_with_clusters_matched$medu1, subset_with_clusters_matched$age_in_years, subset_with_clusters_matched$dep_binarized)
+names(demo) <- c(listVars)
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+  #Change categorical values to have names
+  demo$Depression <- ifelse(demo$Depression == 1, "Depressed", "Non-depressed")
+  demo$Race <- ifelse(demo$Race == 1, "Caucasian", "Non-caucasian")
+  demo$Sex <- ifelse(demo$Sex == 1, "Male", "Female")
+  
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+  
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex")
+  
+  #create demographics table
+  demo_table <- CreateTableOne(vars = listVars, data = demo, factorVars = cat_variables, strata = c("Depression"))
+  print(demo_table, showAllLevels = TRUE)  
+
+```
+
+```{r CNB}
+
+summary_factor_scores <- names(subset_with_clusters_matched[grep ("NAR_Overall", names(subset_with_clusters_matched))])
+extended_names <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/dictionaries/cnb_scores_and_names.csv", header = TRUE) #reads a 2 column table with mappings of cnb scores to actual names
+
+#################################
+# Linear Model for each measure #
+#################################
+
+#get CNB measure names
+cnb_measure_names <- names(subset_with_clusters_matched)[grep("_z", names(subset_with_clusters_matched))] #get the names of all the columns with _z in the name
+
+cnb_speed_names <- cnb_measure_names[grep(pattern = "s_z", x = cnb_measure_names)]
+cnb_accuracy_names <- cnb_measure_names[grep(pattern = "s_z", x = cnb_measure_names, invert = TRUE)]
+
+#lm
+cnb_score_cluster_stats_matched <- lapply(cnb_measure_names, function(x) 
+{
+  lm(substitute(i ~ Hydra_k3, list(i = as.name(x))), data = subset_with_clusters_matched)
+})
+names(cnb_score_cluster_stats_matched) <- cnb_measure_names
+
+#lm Hydra K3 Anova
+cnb_score_cluster_stats_anova_matched <- lapply(cnb_score_cluster_stats_matched, anova) 
+names(cnb_score_cluster_stats_anova_matched) <- cnb_measure_names
+
+
+###################################################
+### Average Z-scores for accuracy and speed #######
+###################################################
+
+#Get stats of mean accuracy, processing speed and efficiency 
+
+all_mean_sd_sem <- data.frame(rep(groups_list$cl, length(summary_factor_scores)), rep(summary_factor_scores, each = length(numeric_vector)), rep(0, 1), rep(0, 1), rep(0,1))
+names(all_mean_sd_sem) <- c("cl", "cnb", "mean", "sd", "sem")
+for(cnb in summary_factor_scores){
+  for(num in 1:length(numeric_vector)) {
+    clst <- groups_list[num,1]
+    meas <- groups_list[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- mean_grp
+    
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sd_grp
+    sem_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])/sqrt(length(which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")))", sep="")
+    sem_grp <- eval(parse(text=as.name(sem_for_eval)))
+    all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sem_grp
+  }
+}
+names(all_mean_sd_sem) <- c("cluster", "cnb", "mean", "sd", "sem")
+
+#remove the NAR_Overall from everything
+summary_scores_first_letter_cap <- c("Accuracy", "Speed", "Efficiency")
+newNames<- rep(summary_scores_first_letter_cap, each = num_clusters + 1)
+all_mean_sd_sem$newNames <- newNames
+
+#plot
+ggplot(data = all_mean_sd_sem, aes(x = factor(newNames, level = summary_scores_first_letter_cap), y = mean, group = cluster)) + ylab("Mean Z-score") + xlab("Summary Scores") + 
+  ggtitle("Summary Factor Scores") +
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  scale_x_discrete(name = " ") +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 30), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 30), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+#remove efficiency
+all_mean_sd_sem <- all_mean_sd_sem[1:8,]
+
+#plot
+ggplot(data = all_mean_sd_sem, aes(x = factor(newNames, level = summary_scores_first_letter_cap), y = mean, group = cluster)) + ylab("Mean Z-score") + xlab("Summary Scores") + 
+  ggtitle("Summary Factor Scores") +
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  scale_x_discrete(name = " ") +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 30), 
+        axis.text.y = element_text(size = 30),  
+        axis.line.x = element_line(size = 2),
+        axis.line.y = element_line(size = 2),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 30), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+#####################################
+###### By CNB Measure ###############
+#####################################
+
+####Accuracy alone####
+cluster_titles <- get_cluster_titles(hydra_cluster = num_clusters)
+numeric_vector <- get_cluster_numerical_vector(hydra_cluster = num_clusters)
+groups_list <- data.frame(cbind(c(cluster_titles), c(numeric_vector)))
+names(groups_list) <- c("cl", "numeric")
+all_mean_sd_sem <- data.frame(rep(groups_list$cl, length(cnb_accuracy_names)), rep(cnb_accuracy_names, each = length(numeric_vector)), rep(0, 1), rep(0, 1), rep(0,1))
+names(all_mean_sd_sem) <- c("cl", "cnb", "mean", "sd", "sem")
+for(cnb in cnb_accuracy_names){
+  for(num in 1:length(numeric_vector)) {
+    clst <- groups_list[num,1]
+    meas <- groups_list[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- mean_grp
+    
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sd_grp
+    sem_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])/sqrt(length(which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")))", sep="")
+    sem_grp <- eval(parse(text=as.name(sem_for_eval)))
+    all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sem_grp
+  }
+}
+
+#add sems to cnb_measures_for_plot
+names(all_mean_sd_sem) <- c("cluster", "cnb", "mean", "sd", "sem")
+accuracy_names_no_z <- toupper(gsub("_z", "", cnb_accuracy_names))
+accuracy_full_names <- extended_names[1:12,2]
+accuracy_names_orderby_system <- c("ABF","ATT","WM","VMEM","FMEM","SMEM","SPA","EMO","VR","LMEM")
+spped_names_orderby_system <- c("ABF","ATT","WM","VMEM","FMEM","SMEM","SM", "SPA","EMO","VR","MOT")
+
+  ggplot(data = all_mean_sd_sem, aes(x = factor(cnb, level = cnb_accuracy_names), y = mean, group = cluster)) + ylab("Mean Z-score") + xlab("Accuracy") + 
+  ggtitle("Accuracy") + 
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  #geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  geom_linerange(aes(ymin=mean-sem, ymax=mean+sem), size=1.5) +
+  scale_x_discrete(labels=accuracy_names_no_z, name = " ") +
+  scale_y_continuous(limits=c(-0.8,1.1)) + 
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  labs(x=NULL, y=NULL) +
+  theme(axis.text.x = element_text(size = 60, angle=70, hjust = 1), 
+        axis.text.y = element_text(size = 60),
+        axis.line.x = element_line(size = 2),
+        axis.line.y = element_line(size = 2),
+        axis.ticks = element_line(colour = "black", size = 2),
+        title = element_text(size = 60), 
+        legend.text = element_text(size = 60), 
+        plot.title = element_text(size=65),
+        legend.position = "none")
+       # legend.position = "top",
+        #legend.title=element_blank())
+
+####Speed alone####
+cluster_titles <- get_cluster_titles(hydra_cluster = num_clusters)
+numeric_vector <- get_cluster_numerical_vector(hydra_cluster = num_clusters)
+groups_list <- data.frame(cbind(c(cluster_titles), c(numeric_vector)))
+names(groups_list) <- c("cl", "numeric")
+all_mean_sd_sem <- data.frame(rep(groups_list$cl, length(cnb_speed_names)), rep(cnb_speed_names, each = length(numeric_vector)), rep(0, 1), rep(0, 1), rep(0,1))
+names(all_mean_sd_sem) <- c("cl", "cnb", "mean", "sd", "sem")
+for(cnb in cnb_speed_names){
+  for(num in 1:length(numeric_vector)) {
+    clst <- groups_list[num,1]
+    meas <- groups_list[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- mean_grp
+    
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sd_grp
+    sem_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])/sqrt(length(which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")))", sep="")
+    sem_grp <- eval(parse(text=as.name(sem_for_eval)))
+    all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sem_grp
+  }
+}
+
+
+#add sems to cnb_measures_for_plot
+names(all_mean_sd_sem) <- c("cluster", "cnb", "mean", "sd", "sem")
+# string manipulation to get pretty labels
+speed_names_no_s_z <- toupper(gsub("_s_z", "", cnb_speed_names))
+
+speed_full_names <- extended_names[13:26,2]
+
+ggplot(data = all_mean_sd_sem, aes(x = factor(cnb, level = cnb_speed_names), y = mean, group = cluster)) + ylab("Mean Z-score") + xlab("Summary Scores") + 
+  ggtitle("Speed") + 
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  #geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  geom_linerange(aes(ymin=mean-sem, ymax=mean+sem), size=1.5) +
+  scale_x_discrete(labels=speed_names_no_s_z, name = " ") +
+  scale_y_continuous(limits=c(-0.8, 1.1)) + 
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  labs(x=NULL, y = NULL) +
+  theme(axis.text.x = element_text(size = 60, angle=70, hjust = 1), 
+        axis.text.y = element_text(size = 60),
+        axis.line.x = element_line(size = 2),
+        axis.line.y = element_line(size = 2),
+        axis.ticks = element_line(colour = "black", size = 2),
+        title = element_text(size = 60), 
+        legend.text = element_text(size = 60), 
+        plot.title = element_text(size=65),
+        legend.position = "none")
+
+###################################################
+###           FDR Correct For Hydra_k3          ###
+###################################################
+
+#Look at model summaries
+models_anova <- lapply(cnb_score_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(cnb_score_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[1]) 
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+row.names(pfdr_anova) <- cnb_measure_names
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+cnb_fdr_anova <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+#make a data frame with names and fdr values (rounded to 3 decimals)
+cnb_names_and_fdr_values_anova <- data.frame(cbind(cnb_fdr_anova, round(pfdr_anova[pfdr_anova<0.05],3)))
+
+#add titles to names_and_fdr tables
+names(cnb_names_and_fdr_values_anova) <- c("cnb_measure", "p_FDR_corr")
+
+print("Linear model- Mean centered age that was then squared")
+print(cnb_names_and_fdr_values_anova)
+
+######################################################
+####Pairwise t-tests for anova-corrected lm means ####
+######################################################
+
+#put lm model into emmeans format
+cnb_emmodel_matched <- lapply(cnb_score_cluster_stats_matched, function(x) {as.list(ref_grid(x))})
+cnb_emmgrid_matched <- lapply(cnb_emmodel_matched, function(x) {as.emmGrid(x)})
+
+#run emmeans, do not include values that were not FDR corrected
+cnb_emmeans_matched <- lapply(cnb_emmgrid_matched, function(x) {emmeans(x, "Hydra_k3")})
+
+#run pairwise contrasts
+cnb_emmpairs_matched <- lapply(cnb_emmeans_matched, function(x) {pairs(x)})
+
+#Only include measures that wer fdr corrected (i.e., only keep parts of the model (or only display) ones that are corrected)
+cnb_emmpairs_matched_FDR_corrected <- cnb_emmpairs_matched[c(cnb_fdr_anova)]
+
+######Make table of contrasts, rows are names of cnb measures that are fdr corrected, columns are contrasts, values are pvalues
+
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- make_pairwise_contrast_names(num_clusters = num_clusters)
+#go through each fdr corrected cnb measure, and extract p values
+contrast_table <- lapply(cnb_emmpairs_matched_FDR_corrected, function(x) {round(summary(x)$p.value,3)})
+#get the names of the measures that were fdr corrected
+fdr_corrected_cnb <- names(contrast_table)
+#build table that will hold the name of the measure and the p values
+pairwise_table <- data.frame(matrix(nrow = length(fdr_corrected_cnb), ncol = length(contrast_names)))
+#give the appropriate names
+rownames(pairwise_table) <- fdr_corrected_cnb
+colnames(pairwise_table) <- contrast_names
+
+#loop through each measure, and manually assign the columns to be the p values
+for (measure in fdr_corrected_cnb)
+{
+  pair_pval <- contrast_table[[measure]]
+  pairwise_table[measure,] <- pair_pval
+}
+
+#add FDR correction
+pairwise_table_with_fdr <- pairwise_table
+pairwise_table_with_fdr$p_FDR_corr <- cnb_names_and_fdr_values_anova$p_FDR_corr
+
+
+#print values
+
+print("LM pairwise contrasts with FDR corrected values, CNB scores")
+print(pairwise_table_with_fdr)
+##write.csv(pairwise_table_with_fdr, "/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/csvs/pairwise_table_CNB.csv")
+
+sapply(cnb_emmpairs_matched_FDR_corrected, function(x) {print(x)})
+
+```
+
+```{r clinical_bifactor}
+#######################################################
+############ READ IN, MERGE AND SUBSET DATA############
+#######################################################
+
+subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/clinical_bifactor_results.rds")
+subset_with_clusters_matched <- subset_with_clusters_matched[which(is.na(subset_with_clusters_matched$medical_psychoactive_drug_count) & is.na(subset_with_clusters_matched$psych_psychoactive_drug_count)),] #lost 308, n = 1115
+
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+#################################
+# Linear Model for each measure #
+##### Results stored in list ####
+#################################
+
+#get clinical measure names
+clinical_measure_names <- names(subset_with_clusters_matched)[grep("Bifactor", names(subset_with_clusters_matched))] #get the names of all the columns with factorv2 in the name
+clinical_measure_names <- clinical_measure_names[-grep("_ar", clinical_measure_names)] #remove age-regressed, as this was done with HYDRA
+
+#lm  and mean centered
+clinical_score_cluster_stats_matched <- lapply(clinical_measure_names, function(x) 
+{
+   lm(substitute(i ~ Hydra_k3, list(i = as.name(x))), data = subset_with_clusters_matched)
+})
+names(clinical_score_cluster_stats_matched) <- clinical_measure_names
+
+
+#lm Hydra K3 Anova
+clinical_score_cluster_stats_anova_matched <- lapply(clinical_score_cluster_stats_matched, anova) 
+names(clinical_score_cluster_stats_anova_matched) <- clinical_measure_names
+
+###################################################
+#####              FDR Correction             #####
+###################################################
+
+## Extracting anovas with significant p values ####
+
+#model summary
+models_anova <- lapply(clinical_score_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(clinical_score_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[1]) #$coef[,"Pr(>F)"][2]) #get the p value for dep binarized
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+row.names(pfdr_anova) <- clinical_measure_names
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the NMF components that survive FDR correction
+clinical_fdr_anova <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+#make a data frame with names and fdr values (rounded to 3 decimals)
+clinical_names_and_fdr_values_anova <- data.frame(cbind(clinical_fdr_anova, round(pfdr_anova[pfdr_anova<0.05],3)))
+
+#add titles to names_and_fdr tables
+names(clinical_names_and_fdr_values_anova) <- c("clinical_measure", "p_FDR_corr")
+
+print("LM")
+print(clinical_names_and_fdr_values_anova)
+
+######################################################
+####Pairwise t-tests for anova-corrected lm means ####
+######################################################
+
+#put lm model into emmeans format
+clinical_emmodel_matched <- lapply(clinical_score_cluster_stats_matched, function(x) {as.list(ref_grid(x))})
+clinical_emmgrid_matched <- lapply(clinical_emmodel_matched, function(x) {as.emmGrid(x)})
+
+#run emmeans, do not include values that were not FDR corrected
+clinical_emmeans_matched <- lapply(clinical_emmgrid_matched, function(x) {emmeans(x, "Hydra_k3")})
+
+#run pairwise contrasts
+clinical_emmpairs_matched <- lapply(clinical_emmeans_matched, function(x) {pairs(x)})
+
+#Only include stuff that was fdr corrected (i.e., only keep parts of the model (or only display) ones that are corrected)
+clinical_emmpairs_matched_FDR_corrected <- clinical_emmpairs_matched[c(clinical_fdr_anova)]
+
+######Make table of contrasts, rows are names of clinical measures that are fdr corrected, columns are contrasts, values are pvalues
+
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- c("-1 - 1", "-1 - 2", "-1 - 3", "1 - 2", "1 - 3", "2 - 3")
+
+#go through each fdr corrected clinical measure, and extract p values
+contrast_table <- lapply(clinical_emmpairs_matched_FDR_corrected, function(x) {round(summary(x)$p.value,3)})
+
+#get the names of the clinical measures that were fdr corrected
+fdr_corrected_clinical <- names(contrast_table)
+
+#build table that will hold the name of the clinical measure and the p values
+pairwise_table <- data.frame(matrix(nrow = length(fdr_corrected_clinical), ncol = 6))
+
+#give the appropriate names
+rownames(pairwise_table) <- fdr_corrected_clinical
+colnames(pairwise_table) <- contrast_names
+
+#loop through each clinical measure, and manually assign the columns to be the p values
+for (measure in fdr_corrected_clinical)
+{
+  pair_pval <- contrast_table[[measure]]
+  pairwise_table[measure,] <- pair_pval
+}
+
+#get the 4factor2 out of the name
+fdr_corrected_clinical_gsub <- gsub("_4factorv2", "", fdr_corrected_clinical)
+rownames(pairwise_table) <- fdr_corrected_clinical_gsub
+
+#add FDR correction
+pairwise_table_with_fdr <- pairwise_table
+pairwise_table_with_fdr$p_FDR_corr <- clinical_names_and_fdr_values_anova$p_FDR_corr
+
+#print values
+
+print("LM pairwise contrasts with FDR corrected values, Bifactor scores")
+print(pairwise_table_with_fdr)
+sapply(clinical_emmpairs_matched_FDR_corrected, function(x) {print(x)})
+```
+
+```{r anxious_misery}
+
+#######################################################
+############ READ IN, MERGE AND SUBSET DATA############
+#######################################################
+
+#read in STAI anxious-misery results
+subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/anxious_misery_results.rds")
+subset_with_clusters_matched <- subset_with_clusters_matched[which(is.na(subset_with_clusters_matched$medical_psychoactive_drug_count) & is.na(subset_with_clusters_matched$psych_psychoactive_drug_count)),] #lost 68, 316 remaining
+
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+#### Demographics
+make_demographics_table(data_frame = subset_with_clusters_matched, hydra_cluster = num_clusters)
+
+
+#################################
+# Linear Model for each measure #
+##### Results stored in list ####
+#################################
+
+clinical_measure_names <- c("staiPreState", "staiPreTrait")
+
+#lm 
+clinical_score_cluster_stats_matched <- lapply(clinical_measure_names, function(x) 
+{
+  lm(substitute(i ~ Hydra_k3, list(i = as.name(x))), data = subset_with_clusters_matched)
+})
+names(clinical_score_cluster_stats_matched) <- clinical_measure_names
+
+
+#lm Hydra K3 Anova
+clinical_score_cluster_stats_anova_matched <- lapply(clinical_score_cluster_stats_matched, anova) 
+names(clinical_score_cluster_stats_anova_matched) <- clinical_measure_names
+
+
+###################################################
+#####              FDR Correction             #####
+###################################################
+
+## Extracting anovas with significant p values ####
+
+#model summary
+models_anova <- lapply(clinical_score_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(clinical_score_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[1]) #get the p value for dep binarized
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+row.names(pfdr_anova) <- clinical_measure_names
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+clinical_fdr_anova <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+#make a data frame with names and fdr values (rounded to 3 decimals)
+clinical_names_and_fdr_values_anova <- data.frame(cbind(clinical_fdr_anova, round(pfdr_anova[pfdr_anova<0.05],3)))
+
+#add titles to names_and_fdr tables
+names(clinical_names_and_fdr_values_anova) <- c("clinical_measure", "p_FDR_corr")
+
+print("LM Clinical")
+print(clinical_names_and_fdr_values_anova)
+
+######################################################
+####Pairwise t-tests for anova-corrected lm means ####
+######################################################
+
+#put lm model into emmeans format
+clinical_emmodel_matched <- lapply(clinical_score_cluster_stats_matched, function(x) {as.list(ref_grid(x))})
+clinical_emmgrid_matched <- lapply(clinical_emmodel_matched, function(x) {as.emmGrid(x)})
+
+#run emmeans, do not include values that were not FDR corrected
+clinical_emmeans_matched <- lapply(clinical_emmgrid_matched, function(x) {emmeans(x, "Hydra_k3")})
+
+#run pairwise contrasts
+clinical_emmpairs_matched <- lapply(clinical_emmeans_matched, function(x) {pairs(x)})
+
+#Only include stuff that was fdr corrected (i.e., only keep parts of the model (or only display) ones that are corrected)
+clinical_emmpairs_matched_FDR_corrected <- clinical_emmpairs_matched[c(clinical_fdr_anova)]
+
+######Make table of contrasts, rows are names of clinical measures that are fdr corrected, columns are contrasts, values are pvalues
+
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- c("-1 - 1", "-1 - 2", "-1 - 3", "1 - 2", "1 - 3", "2 - 3")
+
+#go through each fdr corrected clinical measure, and extract p values
+contrast_table <- lapply(clinical_emmpairs_matched_FDR_corrected, function(x) {round(summary(x)$p.value,3)})
+
+#get the names of the clinical measures that were fdr corrected
+fdr_corrected_clinical <- names(contrast_table)
+
+#build table that will hold the name of the clinical measure and the p values
+pairwise_table <- data.frame(matrix(nrow = length(fdr_corrected_clinical), ncol = 6))
+
+#give the appropriate names
+rownames(pairwise_table) <- fdr_corrected_clinical
+colnames(pairwise_table) <- contrast_names
+
+#loop through each clinical measure, and manually assign the columns to be the p values
+for (measure in fdr_corrected_clinical)
+{
+  pair_pval <- contrast_table[[measure]]
+  pairwise_table[measure,] <- pair_pval
+}
+
+#add FDR correction
+pairwise_table_with_fdr <- pairwise_table
+pairwise_table_with_fdr$p_FDR_corr <- clinical_names_and_fdr_values_anova$p_FDR_corr
+
+#print values
+print("Pairwise contrasts with FDR corrected values, STAI")
+print(pairwise_table_with_fdr)
+sapply(clinical_emmpairs_matched_FDR_corrected, function(x) {print(x)})
+
+```
+
+```{r nback}
+
+#######################################################
+############ READ IN, MERGE AND SUBSET DATA############
+#######################################################
+
+#read in nback rds, which contains mean % signal change
+
+subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/nback_results.rds")
+subset_with_clusters_matched <- subset_with_clusters_matched[which(is.na(subset_with_clusters_matched$medical_psychoactive_drug_count) & is.na(subset_with_clusters_matched$psych_psychoactive_drug_count)),] #lost 65, n = 303 remaining
+
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+#set parcellations to the task_active areas
+parcellations <- names(subset_with_clusters_matched[grep ("nback_func_sc", names(subset_with_clusters_matched))][1:21])
+
+#get number of measures (to be used later on when trying to make graphs)
+num_measures <- length(parcellations)
+
+#### demographics ###
+make_demographics_table(data_frame = subset_with_clusters_matched, hydra_cluster = num_clusters)
+
+#################################
+# Linear Model for each measure #
+##### Results stored in list ####
+#################################
+
+#lm 
+parcellation_cluster_stats_matched <- lapply(parcellations, function(parcellation) 
+{
+  lm(substitute(i ~ nbackRelMeanRMSMotion + Hydra_k3, list(i = as.name(parcellation))), data = subset_with_clusters_matched)
+})
+names(parcellation_cluster_stats_matched) <- parcellations
+
+#lm Hydra K3 Anova
+parcellation_cluster_stats_anova_matched <- lapply(parcellation_cluster_stats_matched, anova) 
+names(parcellation_cluster_stats_anova_matched) <- parcellations
+
+
+###################################################
+## Extracting anovas with significant p values ####
+###################################################
+#Look at model summaries
+models_anova <- lapply(parcellation_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[2]) 
+f_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"F value"[2])
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+f_anova <- as.data.frame(f_anova)
+
+#print BEFORE FDR correction 
+print("LM N-back uncorrected")
+print(p_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+
+#change row names
+row.names(pfdr_anova) <- parcellations
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+parcellation_fdr_anova <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+#make a data frame with names and fdr values (rounded to 3 decimals)
+parcellation_names_and_fdr_values_anova <- data.frame(cbind(parcellation_fdr_anova, round(pfdr_anova[pfdr_anova<0.05],4)))
+
+#add titles to names_and_fdr tables
+names(parcellation_names_and_fdr_values_anova) <- c("parcellation", "p_FDR_corr")
+
+print("FDR corrected")
+print(parcellation_names_and_fdr_values_anova)
+
+######################################################
+####Pairwise t-tests for anova-corrected lm means ####
+######################################################
+#######THIS ONLY WORKS FOR 3 CLUSTERS
+
+#put lm model into emmeans format
+parcellation_emmodel_AG_matched <- lapply(parcellation_cluster_stats_matched, function(x) {as.list(ref_grid(x))})
+parcellation_emmgrid_AG_matched <- lapply(parcellation_emmodel_AG_matched, function(x) {as.emmGrid(x)})
+
+#run emmeans
+parcellation_emmeans_AG_matched <- lapply(parcellation_emmgrid_AG_matched, function(x) {emmeans(x, "Hydra_k3")})
+
+#run pairwise contrasts
+parcellation_emmpairs_AG_matched <- lapply(parcellation_emmeans_AG_matched, function(x) {pairs(x)})
+
+#Only include stuff that was fdr corrected (i.e., only keep parts of the model (or only display) ones that are corrected),this will be null if nothing was corrected
+parcellation_emmpairs_AG_matched_FDR_corrected <- parcellation_emmpairs_AG_matched[c(parcellation_fdr_anova)]
+
+
+
+################
+####Corrected #######
+######Make table of contrasts, rows are names of brain regions that are fdr corrected, columns are contrasts, values are pvalues
+
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- c("-1 - 1", "-1 - 2", "-1 - 3", "1 - 2", "1 - 3", "2 - 3")
+
+#go through each fdr corrected brain region, and extract p values
+contrast_table <- lapply(parcellation_emmpairs_AG_matched_FDR_corrected, function(x) {round(summary(x)$p.value,3)})
+
+#get the names of the brain regions that were fdr corrected
+fdr_corrected_brain_regions <- names(contrast_table)
+
+#build table that will hold the name of the brain region and the p values
+pairwise_table <- data.frame(matrix(nrow = length(fdr_corrected_brain_regions), ncol = 6))
+
+#give the appropriate names
+rownames(pairwise_table) <- fdr_corrected_brain_regions
+colnames(pairwise_table) <- contrast_names
+
+#loop through each brain region, and manually assign the columns to be the p values
+for (region in fdr_corrected_brain_regions)
+{
+  pair_pval <- contrast_table[[region]]
+  pairwise_table[region,] <- pair_pval
+}
+
+#get fdr correcting for pairwise contrasts
+pairwise_table_post_pairwise_fdr <- pairwise_table[,4:6]
+for (region in fdr_corrected_brain_regions)
+{
+  pair_pval <- contrast_table[[region]][4:6]
+  pairwise_fdr <- p.adjust(pair_pval,method="fdr")
+  pairwise_table_post_pairwise_fdr[region,] <- pairwise_fdr
+}
+
+#Add FDR correction
+pairwise_table_with_fdr <- pairwise_table
+pairwise_table_with_fdr$p_FDR_corr <- parcellation_names_and_fdr_values_anova$p_FDR_corr
+
+print ("LM pairwise contrasts and FDR corrrected values")
+print(pairwise_table_with_fdr)
+
+sapply(parcellation_emmpairs_AG_matched_FDR_corrected, function(x) {print(x)})
+
+
+
+
+###Effect size
+
+parcellation_eff_size <- lapply(fdr_corrected_brain_regions, function(brain_region){
+  cohen_pairwise_table <- cohen_d_allpairs(data_frame = subset_with_clusters_matched, measure = brain_region, hydra_cluster = num_clusters)
+})
+names(parcellation_eff_size) <- fdr_corrected_brain_regions
+
+print(parcellation_eff_size)
+
+```
+
+
+```{r Age_by_sex_nback }
+#Set parcellations to represent areas that were FDR-corrected from nback in previous section
+parcellations <- fdr_corrected_brain_regions
+
+#get number of measures (to be used later on when trying to make graphs)
+num_measures <- length(parcellations)
+
+#lm 
+parcellation_cluster_stats_matched <- lapply(parcellations, function(parcellation) 
+{
+  lm(substitute(i ~ nbackRelMeanRMSMotion + age_in_years*sex + Hydra_k3, list(i = as.name(parcellation))), data = subset_with_clusters_matched)
+})
+names(parcellation_cluster_stats_matched) <- parcellations
+
+#lm Hydra K3 Anova
+parcellation_cluster_stats_anova_matched <- lapply(parcellation_cluster_stats_matched, anova) 
+names(parcellation_cluster_stats_anova_matched) <- parcellations
+
+
+###################################################
+## Extracting anovas with significant p values ####
+###################################################
+#Look at model summaries
+models_anova <- lapply(parcellation_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[5]) 
+f_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"F value"[5])
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+f_anova <- as.data.frame(f_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+
+#change row names
+row.names(pfdr_anova) <- parcellations
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+parcellation_fdr_anova_age_by_sex <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+if (length(parcellation_fdr_anova) == 0) {
+  print("Age by Group interactions for Nback regions of interest all P=NS")
+} else {
+  #make a data frame with names and fdr values (rounded to 3 decimals)
+  parcellation_names_and_fdr_values_anova_age_by_sex <- data.frame(cbind(parcellation_fdr_anova_age_by_sex, round(pfdr_anova[pfdr_anova<0.05],4)))
+
+  #add titles to names_and_fdr tables
+  names(parcellation_names_and_fdr_values_anova_age_by_sex) <- c("parcellation", "p_FDR_corr")
+
+  print("FDR corrected")
+  print(parcellation_names_and_fdr_values_anova_age_by_sex)
+}
+
+```
+```{r Age_by_group_nback}
+#Set parcellations to represent areas that were FDR-corrected from nback in previous section
+parcellations <- fdr_corrected_brain_regions
+
+#get number of measures (to be used later on when trying to make graphs)
+num_measures <- length(parcellations)
+
+#lm 
+parcellation_cluster_stats_matched <- lapply(parcellations, function(parcellation) 
+{
+  lm(substitute(i ~ nbackRelMeanRMSMotion + age_in_years*Hydra_k3 + Hydra_k3, list(i = as.name(parcellation))), data = subset_with_clusters_matched)
+})
+names(parcellation_cluster_stats_matched) <- parcellations
+
+#lm Hydra K3 Anova
+parcellation_cluster_stats_anova_matched <- lapply(parcellation_cluster_stats_matched, anova) 
+names(parcellation_cluster_stats_anova_matched) <- parcellations
+
+
+###################################################
+## Extracting anovas with significant p values ####
+###################################################
+#Look at model summaries
+models_anova <- lapply(parcellation_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[4]) 
+f_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"F value"[4])
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+f_anova <- as.data.frame(f_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+
+#change row names
+row.names(pfdr_anova) <- parcellations
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+parcellation_fdr_anova_age_by_group <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+if (length(parcellation_fdr_anova) == 0) {
+  print("Age by Sex interactions for Nback regions of interest all P=NS")
+} else {
+  #make a data frame with names and fdr values (rounded to 3 decimals)
+  parcellation_names_and_fdr_values_anova_age_by_group <- data.frame(cbind(parcellation_fdr_anova_age_by_group, round(pfdr_anova[pfdr_anova<0.05],4)))
+
+  #add titles to names_and_fdr tables
+  names(parcellation_names_and_fdr_values_anova_age_by_group) <- c("parcellation", "p_FDR_corr")
+
+  print("FDR corrected")
+  print(parcellation_names_and_fdr_values_anova_age_by_group)
+}
+
+
+
+```
+```{r parcellations_movement}
+
+#Set parcellations to represent areas that were FDR-corrected from nback in previous section
+parcellations <- fdr_corrected_brain_regions
+
+#get number of measures (to be used later on when trying to make graphs)
+num_measures <- length(parcellations)
+
+#lm 
+parcellation_cluster_stats_matched <- lapply(parcellations, function(parcellation) 
+{
+  lm(substitute(i ~ nbackRelMeanRMSMotion*Hydra_k3, list(i = as.name(parcellation))), data = subset_with_clusters_matched)
+})
+names(parcellation_cluster_stats_matched) <- parcellations
+
+#lm Hydra K3 Anova
+parcellation_cluster_stats_anova_matched <- lapply(parcellation_cluster_stats_matched, anova) 
+names(parcellation_cluster_stats_anova_matched) <- parcellations
+
+
+###################################################
+## Extracting anovas with significant p values ####
+###################################################
+#Look at model summaries
+models_anova <- lapply(parcellation_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[3]) 
+f_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"F value"[3])
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+f_anova <- as.data.frame(f_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+
+#change row names
+row.names(pfdr_anova) <- parcellations
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+parcellation_fdr_anova_movement <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+if (length(parcellation_fdr_anova) == 0) {
+  print("Motion by Group interactions for Nback regions of interest all P=NS")
+} else {
+  #make a data frame with names and fdr values (rounded to 3 decimals)
+  parcellation_names_and_fdr_values_anova_movement <- data.frame(cbind(parcellation_fdr_anova_movement, round(pfdr_anova[pfdr_anova<0.05],4)))
+
+  #add titles to names_and_fdr tables
+  names(parcellation_names_and_fdr_values_anova_movement) <- c("parcellation", "p_FDR_corr")
+
+  print("FDR corrected")
+  print(parcellation_names_and_fdr_values_anova_movement)
+}
+
+```
+```{r nback_performance}
+
+#Dprime statistics for nback performance
+
+#read in nback cluster and demographics data
+nback_subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/nback_results.rds")
+nback_subset_with_clusters_matched <- nback_subset_with_clusters_matched[which(is.na(nback_subset_with_clusters_matched$medical_psychoactive_drug_count) & is.na(nback_subset_with_clusters_matched$psych_psychoactive_drug_count)),]
+
+
+#read in nback behavior (accuracy/performance data)
+nback_behavior <- read.csv('/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/neuroimaging/nback/n1601_nbackBehavior_from_20160207_dataRelease_20161027.csv')
+
+#merge together
+nback_behavior_with_clusters <- merge(nback_subset_with_clusters_matched, nback_behavior, by = c("bblid", "scanid"))
+
+#subset people with missing 2backDPrime - everyone has dPrime, no subjects removed
+nback_behavior_with_clusters <- nback_behavior_with_clusters[!is.na(nback_behavior_with_clusters$nbackBehTwobackDprime),]
+
+#lm 
+lm_nback_behavior <- lm(nbackBehTwobackDprime ~ Hydra_k3, data = nback_behavior_with_clusters)
+
+#anova
+anova_nback_behavior <- anova(lm_nback_behavior)
+
+#pairwise tests
+
+#put lm model into emmeans format
+emmodel<- ref_grid(lm_nback_behavior)
+emmgrid <- as.emmGrid(emmodel)
+
+#run emmeans
+emmeans <- emmeans(emmgrid, "Hydra_k3")
+print(emmeans)
+
+#run pairwise contrasts
+emmpairs <- pairs(emmeans)
+print(emmpairs)
+
+#contrast table construction
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- c("-1 - 1", "-1 - 2", "-1 - 3", "1 - 2", "1 - 3", "2 - 3")
+
+#p_values
+contrast_table <- round(data.frame(emmpairs)$p.value, 3)
+
+#assign names to contrast table
+names(contrast_table) <- contrast_names
+
+contrast_table <- as.data.frame(t(contrast_table))
+
+row.names(contrast_table) <- c("2back DPrime")
+
+contrast_table$"F value" <- round(anova_nback_behavior$`F value`[1],3)
+contrast_table$"Pr(>F)" <- round(anova_nback_behavior$`Pr(>F)`[1],4)
+
+#display
+print(contrast_table)
+
+#graph
+graphing_df <- data.frame(subtype = c("TD", "Subtype 1", "Subtype 2", "Subtype 3"), 
+                          mean = data.frame(emmeans)[,2],
+                          sem = data.frame(emmeans)[,3])
+#graphing_df$subtype <- as.facter(graphing_df$subtype)
+#graphing_df$
+plot_dprime<- ggplot(data=graphing_df, aes(x=subtype, y=mean)) +
+  ylab("Mean") + xlab("Subtype") +
+  ggtitle("2-back DPrime by Subtype") + 
+  geom_line(aes(color=subtype, size=.1), show.legend = F) +
+  geom_point(aes(color=subtype, size=.2)) + 
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  scale_x_discrete(name = " ") +
+  scale_y_continuous(limits = c(0,3)) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 20),
+        axis.title.y = element_text(size = 20),
+        axis.text.x = element_text(size = 20, angle=60, hjust = 1), 
+        axis.text.y = element_text(size = 20))
+plot_dprime
+
+```
+
+
+
