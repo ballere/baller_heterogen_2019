@@ -1,10 +1,10 @@
 These scripts were used for the Neurocognitive and Functional Heterogeneity in Depressed Youth
 
 Main analysis (details can be found in body of the .Rmd):
-Neurocognitive_and_Functional_heterogeneity_in_depressed_youth_main_analysis_molec_20191125.Rmd - Contains the data subsetting, matching, and group level cognitive, clinical, anxiety and N-back analysis
+Neurocognitive_and_Functional_heterogeneity_in_depressed_youth_main_analysis_molec_20200215.Rmd - Contains the data subsetting, matching, and group level cognitive, clinical, anxiety and N-back analysis
 
 Sensitivity analysis with youth who were not on medication: 
-Sensitivity_analysis_nomeds_20191125.Rmd
+Sensitivity_analysis_nomeds_20200215.Rmd
 
 HYDRA scripts (to run HYDRA code):
 submit_run_hydra_experiment_csv_matched_age_and_sex_n1424_matched_imaging_plus_non_imaging - sends information to HYDRA
