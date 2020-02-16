@@ -9,18 +9,18 @@ Sensitivity_analysis_nomeds_20200215.Rmd
 
 HYDRA scripts (to run HYDRA code):
 submit_run_hydra_experiment_csv_matched_age_and_sex_n1424_matched_imaging_plus_non_imaging - sends information to HYDRA
-matlab_script_to_get_subtypes_and_ARI - extracts ARI and Subtypes from output of HYDRA
+matlab_script_to_get_subtypes_and_ARI - Extracts ARI and Subtypes from output of HYDRA
 SaveHydraOutput_NEW.m - Saves output from HYDRA in a way that is viewable and usable by R analyses
 
 N-back
-prepForNbackNetworks.R - gets the subset of subjects who have imaging data and will be used in the n-back analysis
-afni_3dROIstats_script.sh - extracts mean percent signal change from each subject for each functionally defined ROI
+prepForNbackNetworks.R - Gets the subset of subjects who have imaging data and will be used in the n-back analysis
+afni_3dROIstats_script.sh - Extracts mean percent signal change from each subject for each functionally defined ROI
 
 HYDRA code can be found at https://github.com/asotiras/HYDRA.
 
 HYDRA permutation analysis:
-hydra2018.m - hydra code
-run_hydra_experiment_csv_NC.m - healthy control group split in half (half served as controls, the other half as "pseudopatients"), permuted and run through HYDRA x 50
-run_hydra_experiment_csv_partialNCPatients.m - half of healthy gorup, half of patient group selected, permuted and run through HYDRA x 50
+hydra2018.m - Hydra code
+run_hydra_experiment_csv_NC.m - Healthy control group split in half (half served as controls, the other half as "pseudopatients"), permuted and run through HYDRA x 50
+run_hydra_experiment_csv_partialNCPatients.m - Half of healthy gorup, half of patient group selected, permuted and run through HYDRA x 50
 
 Data from the Philadelphia Neurodevelopmental Cohort can be accessed at https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=phs000607.v3.p2
