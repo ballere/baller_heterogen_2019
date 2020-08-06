@@ -24,3 +24,8 @@ run_hydra_experiment_csv_NC.m - Healthy control group split in half (half served
 run_hydra_experiment_csv_partialNCPatients.m - Half of healthy group, half of patient group selected, permuted and run through HYDRA x 50
 
 Data from the Philadelphia Neurodevelopmental Cohort can be accessed at https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=phs000607.v3.p2
+
+8/6/2020
+Two new scripts were added to address revisions in Neuropsychopharmacology Paper
+Neurocognitive_and_Functional_heterogeneity_in_depressed_youth_NPP_REVISION_20200805.Rmd
+Sensitivity_analysis_nomeds_revision_script_20200806.Rmd
