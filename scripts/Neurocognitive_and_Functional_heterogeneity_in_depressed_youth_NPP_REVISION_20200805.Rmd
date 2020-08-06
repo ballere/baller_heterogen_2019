@@ -1,0 +1,2731 @@
+---
+title: "Neurocognitive and Functional Heterogeneity in Depressed Youth"
+author: "Erica Baller"
+date: "08/04/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.width = 9)
+library(visreg)
+library(mgcv)
+library(tableone)
+library(dplyr)
+library(plm)
+library(MatchIt)
+library(tidyr)
+library(ggplot2)
+library(reshape)
+library(emmeans)
+library(MASS)
+library(effsize)
+library(matrixStats)
+library(Hmisc)
+require(cowplot)
+require(stringr)
+require(rasterVis)
+require(lattice)
+theme_update(plot.title = element_text(hjust = 0.5))
+
+#functions
+source("~/BBL/from_chead/ballerDepHeterogen/ballerDepHeterogenScripts/npp_revision_scripts/Hydra_functions.R")
+
+#baseline settings
+num_clusters <- 3
+total_num_groups <- num_clusters + 1
+cluster_titles <- get_cluster_titles(hydra_cluster = num_clusters)
+numeric_vector <- get_cluster_numerical_vector(hydra_cluster = num_clusters)
+groups_list <- data.frame(cbind(c(cluster_titles), c(numeric_vector)))
+names(groups_list) <- c("cl", "numeric")
+```
+
+This is the master document containing the final analyses for the project: 
+Neurocognitive and Functional Heterogeneity in Depressed Youth
+
+Steps:
+
+1) Sample construction
+- We started with the CNB sample (9498 youths aged 8-22)
+- Youths were excluded if they did not have age, sex, gender or maternal education documented
+- Youths were also excluded if they had missing data for any of the 26 cognitive measures (12 accuracy, 14 speed)
+- 712 depressed youths and 2310 remained (n = 3022)
+
+2) Matching
+- Using the R package Matchit, depressed youths were age and sex matched with typically developing youth
+- Match was performed in 2 steps to allow us to enrich our TD group with children who had imaging
+- Step 1: Depressed youth with imaging(200) were matched with youths with imaging. Results: 187 depressed and 187 TDs matched 
+- Step 2: People who were matched in Step 1 were removed from the original groups (unmatched: Depressed 525, TD 2123)
+- Step 3: Subjects from TD group that did not have imaging were removed
+- Step 4: Match was rerun for depressed without imaging with TDs WITH imaging
+- Step 5: Groups were combined and demographics were checked to ensure that the groups were still matched
+- Of note: Matchit does depend on random seeding, so each iteration generates VERY SLIGHT differences between groups
+- Our Matchit was run 6/11/2018
+- Final TD (n = 712) and Depressed (n = 712), for a total n = 1424
+
+3) HYDRA
+- Final matched groups were output to csv and sent to HYDRA for subtyping
+- The HYDRA code can be found at https://github.com/evarol/HYDRA
+
+4) Cognitive analysis
+- Results from HYDRA revealed highest ARI (0.39) for 3 subtype solution
+- CNB Factor Summary Scores (Accuracy, Speed, Efficiency) were evaluated
+- Results:
+   - Subtype 1: Cognition Preserved 
+   - Subtype 2: Cognition Impaired
+   - Subtype 3: Impulsive
+
+5) Clinical bifactor analysis
+- Bifactor scores were calculated (excluding measures that were used to classify depression in initial sample construction)
+- Subtypes were evaluated on 5 bifactor scores (anxious-misery, psychosis, externalizing, fear, and overall psychopathology)
+- Results:
+  - ANOVA showed significant between group differences for anxious-misery, externalizing, fear and overall (P(FDR) <0.05)
+  - Pairwise (Tukey)
+    -All subtypes had higher psychopathology than TDs (P(FDR)< 0.05)
+    - Subtypes 1 and 3 were indistinguishable on clinical factor scores (P = NS)
+    - Subtype 1 had higher anxious-misery scores than Subtype 2 (P=0.030)
+    - Subtype 2 had higher fear scores than Subtypes 1 and 3 (P<0.0001)
+
+6) Anxious-misery analysis
+- Anxious-misery factor scores were calculated separately from the State-Trait Anxiety Inventory (STAI)
+- Subtypes were evaluated on state and trait factors to verify cognitive differences were not due to current or lifetime anxious-misery
+- Results:
+  - All subtypes had significantly higher state (P(FDR) = 0.001) and trait (P(FDR)<0.001) anxiety
+    - State Pairwise: 
+      - Subtype 1 vs TD (P=0.03)
+      - Subtype 2 vs TD (P=0.02)
+      - Subtype 3 vs TD (P=0.08, NS)
+    - Trait Pairwise: All Subtypes vs TD (P<0.001)
+  - Subtypes 1-3 did NOT differ on EITHER state or trait anxiety (P=NS)
+
+7) Nback
+- Using 21 functionally defined regions of interest from Satterthwaite et al, 2013, percent signal change between 2bk and 0bk was evaluated by subtype
+- Results:
+  - 6 areas showed significant differences (P(FDR)<0.05) by subtype including 
+    - right crus II
+    - right precuneus
+    - left precuneus
+    - dorsal anterior cingulate
+    - left dorsal frontal/mfg
+    - left dorsolateral prefrontal cortex 
+  - Effect size analysis also present
+
+8) Nback age-by-sex
+- For each of the 6 regions that showed between group differences that survived FDR correction (P(FDR) <0.05)), age by sex interactions were evaluated
+- Results: 
+  -For all areas, (P(FDR) > 0.05)
+  
+9) Nback age-by-group analysis
+- For each of the 6 regions that showed between group differences that survived FDR correction (P(FDR) <0.05)), age by group interactions were evaluated
+- Results: 
+  -For all areas, (P(FDR) > 0.05)
+
+10) Nback movement analysis
+- For each of the 6 regions that showed between group differences that survived FDR correction (P(FDR) <0.05)), movement analyses were conducted
+- Results: 
+  -For all areas, (P(FDR) > 0.05)
+  
+11) Nback performance (DPrime)
+- Nback performance results during the task were calculated by subtype
+- Results:
+  - Dprime measure map on to brain imaging findings and cognitive findings
+    - DPrime Subtype 2 < Subtype 3 < TD < Subtype 1
+```{r sample_construction}
+set.seed(1)
+
+#read in csvs
+demographics <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/n9498_demographics_go1_20161212.csv", header = TRUE, sep = ",") 
+
+cnb_scores <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/n9498_cnb_zscores_fr_20170202.csv", header = TRUE, sep = ",") 
+
+health <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/n9498_health_20170405.csv", header = TRUE, sep = ",") 
+
+psych_summary <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/n9498_goassess_psych_summary_vars_20131014.csv", header = TRUE, sep = ",") 
+
+imaging_summary <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/neuroimaging/t1struct/n1601_t1QaData_20170306.csv")
+
+wrat_scores <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/n9498_cnb_wrat_scores_20161215.csv", header = TRUE, sep = ",")
+
+#remove people with NA for race, age, or sex.  START WITH N = 9498
+demographics_noNA_race <- demographics[!is.na(demographics$race),] #everyone has a race, N = 9498
+demographics_noNA_race_age <- demographics_noNA_race[!is.na(demographics_noNA_race$ageAtClinicalAssess1),] # 86 people do not have age at clinical assessment.  N = 9412
+demographics_noNA_race_age_sex <- demographics_noNA_race_age[!is.na(demographics_noNA_race_age$sex),] #everyone has a sex, N = 9412
+demographics_noNA_race_age_andCNBage_sex <- demographics_noNA_race_age_sex[!is.na(demographics_noNA_race_age_sex$ageAtCnb1),] #6 people do not have ageAtCnb1, N = 9406
+
+#remove people with NA for depression or total psych score, START WITH N = 9498
+psych_summary_no_NA_dep <- psych_summary[!is.na(psych_summary$smry_dep),] #take out those with NA for depression, 87 people N = 9411
+psych_summary_no_NA_dep_and_smry_psych_overall <- psych_summary_no_NA_dep[!is.na(psych_summary_no_NA_dep$smry_psych_overall_rtg),] #take out those with NA for overall psych rtg, no additional people lost, N = 9411
+
+#only include good imaging scans, n = 1540
+imaging_include <- subset.data.frame(imaging_summary, (t1Exclude == 0))
+
+################
+#merge the csvs#
+################
+
+#merge demographics and cnb #this is if we want to include people without full demographic data
+dem_cnb <- merge(demographics_noNA_race_age_andCNBage_sex, cnb_scores, by = "bblid") #merge demographics and cnb, N = 9406
+psych_health <- merge(psych_summary_no_NA_dep_and_smry_psych_overall, health, by = "bblid") #merge psych and health, N = 9411
+dem_cnb_psych_health_merged <- merge(dem_cnb, psych_health, by = "bblid") #merge all 4 csvs, lost 1 person [134716] (had demographics, but no psych ratings): N = 9405
+dem_merged_with_imaging_as_well <- merge(dem_cnb_psych_health_merged, imaging_include, by = "bblid")
+
+#make subsets 
+subset_just_dep_and_no_medicalratingExclude <- subset.data.frame(dem_cnb_psych_health_merged, ((medicalratingExclude == 0) & (smry_dep == 4))) #subset people who were not medically excluded and who are depressed, N = 776
+subset_no_psych_no_medicalratingExclude <- subset.data.frame(dem_cnb_psych_health_merged, ((medicalratingExclude == 0) & (smry_psych_overall_rtg < 4))) #subset people who are psychiatrically healthy, N = 2508
+subset_nondep_imaging <-  subset.data.frame(dem_merged_with_imaging_as_well, ((medicalratingExclude == 0) & (smry_dep < 4))) #n = 1266
+subset_dep_imaging <-  subset.data.frame(dem_merged_with_imaging_as_well, ((medicalratingExclude == 0) & (smry_dep == 4)))#n = 200
+
+#subsets with depressed AND non depressed, without OR with imaging :  without imaging n = 3284, with imaging, n = 703
+subset_dep_or_no_psych_and_no_medicalratingExclude <- subset.data.frame(dem_cnb_psych_health_merged, (medicalratingExclude == 0) & ((smry_dep == 4) | (smry_psych_overall_rtg <4))) #subset including both depressed and healthies, N = 3284
+subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging <- subset.data.frame(dem_merged_with_imaging_as_well, (medicalratingExclude == 0) & ((smry_dep == 4) | (smry_psych_overall_rtg <4))) #subset including both depressed and healthies, N = 703
+
+#binarize depression smry score to -1 (not depressed) and 1 (depressed)
+dep_binarized <- ifelse(subset_dep_or_no_psych_and_no_medicalratingExclude$smry_dep == 4, 1, -1)
+dep_binarized_with_imaging <- ifelse(subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging$smry_dep == 4, 1, -1)
+subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED <- cbind(subset_dep_or_no_psych_and_no_medicalratingExclude, dep_binarized) #N = 3284
+subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED <- cbind(subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging, dep_binarized_with_imaging) #N = 703
+
+#make depression and gender into factor scores 
+subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$dep_binarized <- as.factor(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$dep_binarized)
+subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED$dep_binarized <- as.factor(subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED$dep_binarized)
+
+subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$sex <- as.factor(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$sex)
+subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED$sex <- as.factor(subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED$sex)
+
+#divide ageAtCNB by 12 for age 
+subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$age_in_years <- subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$ageAtCnb1/12
+subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED$age_in_years <- subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED$ageAtCnb1/12
+
+#age demeaned and squared
+subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$ageSq <- as.numeric(I(scale(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$age_in_years, scale = FALSE, center = TRUE)^2))
+subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED$ageSq <- as.numeric(I(scale(subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED$age_in_years, scale = FALSE, center = TRUE)^2))
+
+#race binarized for plotting purposes, caucasian 1, non-caucasion 0
+subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$race_binarized <- ifelse(as.factor(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$race) == 1, 1, 0)
+subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED$race_binarized <- ifelse(as.factor(subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED$race) == 1, 1, 0)
+
+#remove people with NA in their cognitive measures, we lose 252 for whole group, and 57 with imaging at this stage, n for NO imaging = 3022, n for WITH IMAGING = 646(dep = 187, non-dep = 459)
+subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED <- subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED[complete.cases(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED[14:39]),] #n=3022
+subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED <- subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED[complete.cases(subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED[14:39]),] # n = 646
+
+#check psychoactive meds for TDs
+meds_list <- read.csv2("/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/n1601_health_with_meds_20170421.csv", sep = ",", header = TRUE)
+
+with_active_meds <- merge(subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED, meds_list, by = "bblid")
+
+dep <- which(with_active_meds$dep_binarized == 1)
+TD <- which(with_active_meds$dep_binarized == -1)
+just_TD_meds <- with_active_meds[TD,]
+#set x to cells that were removed for sensitivity analysis, i.e. people on psychoactive drugs
+#x <- which(!is.na(subset_with_clusters_matched_all$medical_psychoactive_drug_count) | !is.na(subset_with_clusters_matched_all$psych_psychoactive_drug_count))
+
+
+```
+
+```{r matching}
+
+#Steps for this section
+####1. Match depress w/ imaging to controls w/imaging
+####2. Removed these from full group
+####3. Match remaining depressed without imaging to controls who weren't previously matched
+####4. Combine depressed w/imaging to depressed w/out imaging and controls w/imaging to controls w/out imaging
+####5. Check distribution of these groups
+
+#########First: matching only depressed people with imaging to controls with imaging###
+#match with matchit depressed n =187
+#### matching on age_and_sex: dep: m/f (70/117), non dep:m/f (70/117)
+
+data.unmatched = subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED[complete.cases(subset_dep_or_no_psych_and_no_medicalratingExclude_with_imaging_DEPBINARIZED[14:39]),]
+data.unmatched$unmatchedRows =rownames(data.unmatched)
+dataset = data.unmatched
+
+# Some preprocessing
+dataset = dplyr::select(dataset, sex, age_in_years, ageSq, medu1, race_binarized, dep_binarized, unmatchedRows)
+
+# Dep: 1, Health = 0 
+dataset$dep_binarized = 1*(dataset$dep_binarized==1) 
+
+#"male": 1, "female": 0
+dataset$sex = 1*(dataset$sex==1)
+
+# Remove subjects with NA for maternal edu, new N = 3256, males = 1539, females 1717
+dataset <- dataset[!is.na(dataset$medu1),]
+
+# Plot prematch
+plot(dataset$age_in_years,jitter(dataset$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+#post_match
+m_age_and_sex.out <-matchit(dep_binarized ~ age_in_years + sex, data=dataset, method="nearest", distance="mahalanobis")
+plot(m_age_and_sex.out)
+m_age_and_sex.data <- match.data(m_age_and_sex.out)
+plot(m_age_and_sex.data$age_in_years,jitter(m_age_and_sex.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age and sex matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+
+# Make the final matched data set
+data_age_and_sex.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_age_and_sex.data$unmatchedRows,]
+data_age_and_sex.matched$unmatchedRows = NULL
+
+##############
+#Demo Tablets#
+##############
+#subset demographics
+
+listVars <- c("Race_binarized", "Sex", "Maternal Ed", "Age", "Depression") #Race 1 = caucasian, Maternal Ed = years, age = years, dep 1 = dep, 0 = non_dep
+matched_versions <- c("data_age_and_sex")
+
+for(vers in matched_versions) {
+  demo_string_to_eval <- paste("data.frame(", vers , ".matched$race_binarized, ", vers, ".matched$sex, ", vers, ".matched$medu1, ", vers, ".matched$age_in_years, ", vers, ".matched$dep_binarized)", sep ="")
+  demo_data.matched <- eval(parse(text=as.name(demo_string_to_eval)))
+  names(demo_data.matched) <- c(listVars)
+  
+  #Change categorical values to have names
+  demo_data.matched$Depression <- ifelse(demo_data.matched$Depression == 1, "Depressed", "Non-depressed")
+  demo_data.matched$Race <- ifelse(demo_data.matched$Race == 1, "Caucasian", "Non-caucasian")
+  demo_data.matched$Sex <- ifelse(demo_data.matched$Sex == 1, "Male", "Female")
+  
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+  
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex")
+  
+  #create demographics table
+  demo_data.matched_table <- CreateTableOne(vars = listVars, data = demo_data.matched, factorVars = cat_variables, strata = c("Depression"))
+  print(paste("Version matching on ", vers))
+  print(demo_data.matched_table, showAllLevels = TRUE)
+  
+  #rename the data***.matched to have an imaging end to it, so we can use it to combine
+  rename_string_to_eval <- paste(vers, ".matched_imaging <- ", vers, ".matched", sep = "")
+  eval(parse(text = as.name(rename_string_to_eval)))
+}
+
+### Match non-imaging depressed 
+
+people_from_imaging_match_age_and_sex <- data_age_and_sex.matched$bblid
+subset_people_who_were_not_included_in_imaging_match_age_and_sex <- subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED[!(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$bblid %in% c(people_from_imaging_match_age_and_sex)),]
+
+data.unmatched = subset_people_who_were_not_included_in_imaging_match_age_and_sex[complete.cases(subset_people_who_were_not_included_in_imaging_match_age_and_sex[14:39]),]
+data.unmatched$unmatchedRows =rownames(data.unmatched)
+dataset = data.unmatched
+
+# Some preprocessing
+dataset = dplyr::select(dataset, sex, age_in_years, ageSq, medu1, race_binarized, dep_binarized, unmatchedRows)
+
+# Dep: 1, Health = 0 
+dataset$dep_binarized = 1*(dataset$dep_binarized==1) 
+
+#"male": 1, "female": 0
+dataset$sex = 1*(dataset$sex==1)
+
+# Remove subjects with NA for maternal edu, new N = 3256, males = 1539, females 1717
+dataset <- dataset[!is.na(dataset$medu1),]
+
+# Plot prematch
+plot(dataset$age_in_years,jitter(dataset$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age")
+
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+#Post match
+m_age_and_sex.out <-matchit(dep_binarized ~ age_in_years + sex, data=dataset, method="nearest", distance="mahalanobis")
+plot(m_age_and_sex.out)
+m_age_and_sex.data <- match.data(m_age_and_sex.out)
+
+# Re-plot
+plot(m_age_and_sex.data$age_in_years,jitter(m_age_and_sex.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age age and sex matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+data_age_and_sex.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_age_and_sex.data$unmatchedRows,]
+data_age_and_sex.matched$unmatchedRows = NULL
+
+### New Demographics
+listVars <- c("Race_binarized", "Sex", "Maternal Ed", "Age", "Depression") #Race 1 = caucasian, Maternal Ed = years, age = years, dep 1 = dep, 0 = non_dep
+matched_versions <- c("data_age_and_sex")
+
+for(vers in matched_versions) {
+  demo_string_to_eval <- paste("data.frame(", vers , ".matched$race_binarized, ", vers, ".matched$sex, ", vers, ".matched$medu1, ", vers, ".matched$age_in_years, ", vers, ".matched$dep_binarized)", sep ="")
+  demo_data.matched <- eval(parse(text=as.name(demo_string_to_eval)))
+  names(demo_data.matched) <- c(listVars)
+  
+  #Change categorical values to have names
+  demo_data.matched$Depression <- ifelse(demo_data.matched$Depression == 1, "Depressed", "Non-depressed")
+  demo_data.matched$Race <- ifelse(demo_data.matched$Race == 1, "Caucasian", "Non-caucasian")
+  demo_data.matched$Sex <- ifelse(demo_data.matched$Sex == 1, "Male", "Female")
+  
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+  
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex")
+  
+  #create demographics table
+  demo_data.matched_table <- CreateTableOne(vars = listVars, data = demo_data.matched, factorVars = cat_variables, strata = c("Depression"))
+  print(paste("Version matching on ", vers))
+  print(demo_data.matched_table, showAllLevels = TRUE)
+  
+  #rename the data***.matched to have a non-imaging end to it, so we can use it to combine
+  rename_string_to_eval <- paste(vers, ".matched_non_imaging <- ", vers, ".matched", sep = "")
+  eval(parse(text = as.name(rename_string_to_eval)))
+  
+}
+
+###############Combine imaging matched and imaging non-matched groups ####################
+
+#first remove imaging info from the imaging group
+#n= 1424
+data_age_and_sex.matched_imaging_without_imaging_data_in_data_frame <- data_age_and_sex.matched_imaging[,-c(77:89)]
+imaging_plus_non_imaging_matched_groups_data_age_and_sex <- rbind(data_age_and_sex.matched_imaging_without_imaging_data_in_data_frame, data_age_and_sex.matched_non_imaging)
+
+####Demographics check#####
+#subset demographics
+listVars <- c("Race_binarized", "Sex", "Maternal Ed", "Age", "Depression") #Race 1 = caucasian, Maternal Ed = years, age = years, dep 1 = dep, 0 = non_dep
+matched_versions <- c("data_age_and_sex")
+short <- "imaging_plus_non_imaging_matched_groups_"
+
+for(vers in matched_versions) {
+  demo_string_to_eval <- paste("data.frame(", short, vers , "$race_binarized, ", short, vers, "$sex, ", short, vers, "$medu1, ", short, vers, "$age_in_years, ", short, vers, "$dep_binarized)", sep ="")
+  demo_data.matched <- eval(parse(text=as.name(demo_string_to_eval)))
+  names(demo_data.matched) <- c(listVars)
+  
+  #Change categorical values to have names
+  demo_data.matched$Depression <- ifelse(demo_data.matched$Depression == 1, "Depressed", "Non-depressed")
+  demo_data.matched$Race <- ifelse(demo_data.matched$Race == 1, "Caucasian", "Non-caucasian")
+  demo_data.matched$Sex <- ifelse(demo_data.matched$Sex == 1, "Male", "Female")
+  
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+  
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex")
+  
+  #create demographics table
+  demo_data.matched_table <- CreateTableOne(vars = listVars, data = demo_data.matched, factorVars = cat_variables, strata = c("Depression"))
+  print(paste("Version matching on ", vers))
+  print(demo_data.matched_table, showAllLevels = TRUE)
+}
+
+#Group was saved as /Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/cnb_results.rds and sent to HYDRA
+```
+
+```{r original_demographics}
+
+# All of these results use groups generated by matching script 6/11/2018 #
+subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/cnb_results.rds")
+listVars <- c("Race", "Sex", "Maternal Ed", "Age", "Depression") #Race 1 = caucasian, Maternal Ed = years, age = years, dep 1 = dep, 0 = non_dep
+
+demo <- data.frame(subset_with_clusters_matched$race_binarized, subset_with_clusters_matched$sex, subset_with_clusters_matched$medu1, subset_with_clusters_matched$age_in_years, subset_with_clusters_matched$dep_binarized)
+names(demo) <- c(listVars)
+  
+  #Change categorical values to have names
+  demo$Depression <- ifelse(demo$Depression == 1, "Depressed", "Non-depressed")
+  demo$Race <- ifelse(demo$Race == 1, "Caucasian", "Non-caucasian")
+  demo$Sex <- ifelse(demo$Sex == 1, "Male", "Female")
+  
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+  
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex")
+  
+  #create demographics table
+  demo_table <- CreateTableOne(vars = listVars, data = demo, factorVars = cat_variables, strata = c("Depression"))
+  print(demo_table, showAllLevels = TRUE)
+  
+
+```
+
+```{r CNB}
+
+#read in ARIs generated by HYDRA and pre-rpocess
+hydra_aris <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/hydra_output_from_cbica/hydra_matched/20181121_OLD_HYDRA_with_new_script_from_toni/CogData_age_and_sex_n1424_matched_imaging_plus_non_imaging_replication_20181121_ARI.csv", header = FALSE, sep = ",")
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+summary_factor_scores <- names(subset_with_clusters_matched[grep ("NAR_Overall", names(subset_with_clusters_matched))])
+extended_names <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/dictionaries/cnb_scores_and_names.csv", header = TRUE) #reads a 2 column table with mappings of cnb scores to actual names
+
+
+###########################
+###Graph ARI values #######
+###########################
+
+
+
+#ARIs 2-6
+seq_start2 <- seq(from = 2, to = 6)
+hydra_aris_for_plot <- cbind(seq_start2, data.frame(hydra_aris[2:6,1]))
+names(hydra_aris_for_plot) <- c("cluster", "ARI")
+
+ggplot(data=hydra_aris_for_plot, aes(x=cluster, y=ARI, group=1)) +
+  geom_line(color="black", size=1.5) +
+  theme_classic(base_size = 24) +
+  ggtitle("HYDRA") + 
+  theme(legend.position="none", 
+        plot.title = element_text(hjust = 0.5), 
+        axis.ticks.length = unit(5, "pt"),
+        axis.ticks = element_line(size = 1.5),
+        axis.line= element_line(size = 1.5),
+        axis.text = element_text(face="bold")) +
+  scale_y_continuous(breaks=c(0,.10,.20,.30,.40,.50,.60)) +
+  expand_limits(y=.5) +
+  scale_x_continuous(breaks=c(2,3,4,5,6)) +
+  labs(x = "Number of Subtypes") +
+  geom_segment(aes(x = 3, y = 0, xend = 3, yend = .39), linetype="dashed", color = "red", size=1.5) +
+  annotate(geom="text", x=3, y=.42, label="0.39", color="red", size=9)
+
+#######Chi-square for males/females and race########
+##########By males, and by caucasians ##############
+
+#Chi squared 
+chisq_matched_sex <- chi_sq(data_frame = subset_with_clusters_matched, "sex", num_clusters)
+chisq_matched_race <- chi_sq(data_frame = subset_with_clusters_matched, "race_binarized", num_clusters)
+
+#get means/stds
+total_people_Hydra <- total_people_per_cluster(data_frame = subset_with_clusters_matched, hydra_cluster = num_clusters)
+
+num_men_all_clusters <- total_people_per_cluster_by_group(data_frame = subset_with_clusters_matched, variable = "sex", hydra_cluster = num_clusters, group_val = 1)
+num_caucasian_all_clusters <- total_people_per_cluster_by_group(data_frame = subset_with_clusters_matched, variable = "race_binarized", hydra_cluster = num_clusters, group_val = 1)
+
+percent_men_all_clusters <- (num_men_all_clusters/total_people_Hydra) * 100
+percent_caucasian_all_clusters <- (num_caucasian_all_clusters/total_people_Hydra)*100
+
+p_values <- c("", chisq_matched_sex$p.value, "", chisq_matched_race$p.value)
+
+dat_sex_race <- data.frame(cl = c(cluster_titles, "Significance"), 
+                           num_males = c(num_men_all_clusters, "---"),
+                           percent_males = round(c(percent_men_all_clusters, chisq_matched_sex$p.value), 2), 
+                           num_caucasians = c(num_caucasian_all_clusters, "---"),
+                           percent_caucasian = round(c(percent_caucasian_all_clusters, chisq_matched_race$p.value),2))
+dat_sex_race_no_significance <-  data.frame(cl = cluster_titles, 
+                                            num_males = (num_men_all_clusters),
+                                            percent_males = percent_men_all_clusters, 
+                                            num_caucasians = num_caucasian_all_clusters,
+                                            percent_caucasian = percent_caucasian_all_clusters)                 
+percentages <- data.frame(cl=cluster_titles, percent_males = percent_men_all_clusters, percent_caucasians = percent_caucasian_all_clusters)
+percentages_for_plot <- melt(percentages, id.vars = "cl")
+names(percentages_for_plot) <- c("cluster", "group", "percent")
+
+#Set Titles for plots
+title1 <- paste0("Hydra_k", num_clusters, " Percentages")
+
+if(chisq_matched_sex$p.value < 0.05) {
+  title2 <- paste0("Hydra_k", num_clusters, "% Male, p < 0.05")
+} else {
+  title2 <- paste0("Hydra_k", num_clusters, "% Male, p = ", round(chisq_matched_sex$p.value, 2))
+}
+
+if(chisq_matched_race$p.value < 0.05) {
+  title3 <- paste0("Hydra_k", num_clusters, "% Caucasian, p < 0.05")
+} else {
+  title3 <- paste0("Hydra_k", num_clusters, "% Caucasian, p = ", round(chisq_matched_race$p.value, 2))
+}
+
+#plot
+ggplot(data = percentages_for_plot, aes(x = group, y = percent, group = cluster)) + 
+  geom_line(aes(color=cluster)) +
+  geom_point(aes(color=cluster)) + 
+  ggtitle(title1)
+
+ggplot(dat_sex_race_no_significance, aes(x = cl, y = percent_males, fill=cl)) + geom_col() +
+  scale_x_discrete(limits=cluster_titles) + ylim(0, 100) + xlab("Subtypes") + ylab("% Male") + 
+  ggtitle(title2) + scale_fill_discrete(breaks=cluster_titles) +
+  guides(fill=guide_legend(title=NULL))
+
+ggplot(dat_sex_race_no_significance, aes(x = cl, y = percent_caucasian, fill=cl)) + geom_col() + 
+  scale_x_discrete(limits=cluster_titles) + ylim(0, 100) + xlab("Subtypes") + ylab("% Caucasian") + 
+  ggtitle(title3) + scale_fill_discrete(breaks=cluster_titles) + 
+  guides(fill=guide_legend(title=NULL))
+
+
+
+################################
+### graphs by percent female ###
+################################
+percent_females <- 100- percent_men_all_clusters
+percentages_for_plot <- data.frame(cl=cluster_titles, percent_females = percent_females)
+names(percentages_for_plot) <- c("cluster", "percent")
+
+#Set Titles for plots
+title1 <- paste0("Hydra_k", num_clusters, " Percentages")
+
+if(chisq_matched_sex$p.value < 0.05) {
+  title2 <- paste0("Hydra_k", num_clusters, "% Female, p < 0.05")
+} else {
+  title2 <- paste0("Hydra_k", num_clusters, "% Female, p = NS")
+}
+
+ggplot(data = percentages_for_plot, aes(x = cluster, y = percent, fill=cluster)) + 
+  geom_bar(stat = "identity")  + 
+  scale_y_continuous(limits=c(0, 100)) + 
+  ggtitle(title2)
+
+#############################
+######### Bar Graphs ########
+#############################
+
+variable_name_string <- c("age", "medu") #this allows you to specify the actual titles, if different from the data frame titles
+plot_list <- plot_continuous_variables(data_frame = subset_with_clusters_matched, var1 = "age_in_years", var2 = "medu1", hydra_cluster = num_clusters, optional_variable_name_string = variable_name_string)
+for(x in 1:length(plot_list)){
+  print(plot_list[[x]])
+}
+
+
+#################################
+# Linear Model for each measure #
+#################################
+#get overall measures
+cnb_overall <- names(subset_with_clusters_matched)[grep("NAR_Overall", names(subset_with_clusters_matched))] #get the names of all the columns with NAR
+
+#lm
+cnb_overall_lm <- lapply(cnb_overall, function(x) 
+{
+  lm(substitute(i ~ Hydra_k3, list(i = as.name(x))), data = subset_with_clusters_matched)
+})
+names(cnb_overall_lm) <- cnb_overall
+
+#lm Hydra K3 Anova
+cnb_overall_anova <- lapply(cnb_overall_lm, anova) 
+names(cnb_overall_anova) <- cnb_overall
+
+###Effect size
+
+overall_eff_size <- lapply(cnb_overall, function(measure){
+  overall_cohen_pairwise_table <- cohen_d_allpairs(data_frame = subset_with_clusters_matched, measure = measure, hydra_cluster = num_clusters)
+})
+names(overall_eff_size) <- cnb_overall
+
+print(overall_eff_size)
+
+
+#get CNB measure names
+cnb_measure_names <- names(subset_with_clusters_matched)[grep("_z", names(subset_with_clusters_matched))] #get the names of all the columns with _z in the name
+
+cnb_speed_names <- cnb_measure_names[grep(pattern = "s_z", x = cnb_measure_names)]
+cnb_accuracy_names <- cnb_measure_names[grep(pattern = "s_z", x = cnb_measure_names, invert = TRUE)]
+
+#lm
+cnb_score_cluster_stats_matched <- lapply(cnb_measure_names, function(x) 
+{
+  lm(substitute(i ~ Hydra_k3, list(i = as.name(x))), data = subset_with_clusters_matched)
+})
+names(cnb_score_cluster_stats_matched) <- cnb_measure_names
+
+#lm Hydra K3 Anova
+cnb_score_cluster_stats_anova_matched <- lapply(cnb_score_cluster_stats_matched, anova) 
+names(cnb_score_cluster_stats_anova_matched) <- cnb_measure_names
+
+###Effect size
+
+cnb_eff_size <- lapply(cnb_measure_names, function(measure){
+  cnb_cohen_pairwise_table <- cohen_d_allpairs(data_frame = subset_with_clusters_matched, measure = measure, hydra_cluster = num_clusters)
+})
+names(cnb_eff_size) <- cnb_measure_names
+
+print(cnb_eff_size)
+###################################################
+### Average Z-scores for accuracy and speed #######
+###################################################
+
+#Get stats of mean accuracy, processing speed and efficiency 
+
+all_mean_sd_sem <- data.frame(rep(groups_list$cl, length(summary_factor_scores)), rep(summary_factor_scores, each = length(numeric_vector)), rep(0, 1), rep(0, 1), rep(0,1))
+names(all_mean_sd_sem) <- c("cl", "cnb", "mean", "sd", "sem")
+for(cnb in summary_factor_scores){
+  for(num in 1:length(numeric_vector)) {
+    clst <- groups_list[num,1]
+    meas <- groups_list[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- mean_grp
+    
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sd_grp
+    sem_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])/sqrt(length(which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")))", sep="")
+    sem_grp <- eval(parse(text=as.name(sem_for_eval)))
+    all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sem_grp
+  }
+}
+names(all_mean_sd_sem) <- c("cluster", "cnb", "mean", "sd", "sem")
+
+#remove the NAR_Overall from everything
+summary_scores_first_letter_cap <- c("Accuracy", "Speed", "Efficiency")
+newNames<- rep(summary_scores_first_letter_cap, each = num_clusters + 1)
+all_mean_sd_sem$newNames <- newNames
+
+#plot
+ggplot(data = all_mean_sd_sem, aes(x = factor(newNames, level = summary_scores_first_letter_cap), y = mean, group = cluster)) + ylab("Mean Z-score") + xlab("Summary Scores") + 
+  ggtitle("Summary Factor Scores") +
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  scale_x_discrete(name = " ") +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 30), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 30), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+#plot SD
+ggplot(data = all_mean_sd_sem, aes(x = factor(newNames, level = summary_scores_first_letter_cap), y = mean, group = cluster)) + ylab("Mean Z-score") + xlab("Summary Scores") + 
+  ggtitle("Summary Factor Scores SD") +
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.1, size=1.5) +
+  scale_x_discrete(name = " ") +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 30), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 30), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+ggplot(data = all_mean_sd_sem, aes(x = newNames, y = mean, fill = cluster)) + 
+  ylab("Mean Z") +  
+  ggtitle("Summary factor scores SD bar") + 
+  geom_bar(stat = "identity", color="black", position = position_dodge()) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2, size=1, position = position_dodge(0.9)) +
+  scale_x_discrete(name = " ") + #, limits=new_order$newNames) + labs(colour = "cluster") +
+  #guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 25, angle=60, hjust = 1), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 25), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+##### Just Accuracy and Spped ######
+
+#remove efficiency
+all_mean_sd_sem <- all_mean_sd_sem[1:8,]
+
+#plot
+ggplot(data = all_mean_sd_sem, aes(x = factor(newNames, level = summary_scores_first_letter_cap), y = mean, group = cluster)) + ylab("Mean Z-score") + xlab("Summary Scores") + 
+  ggtitle("Summary Factor Scores") +
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  scale_x_discrete(name = " ") +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 30), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 30), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+ggplot(data = all_mean_sd_sem, aes(x = newNames, y = mean, fill = cluster)) + 
+  ylab("Mean Z") +  
+  ggtitle("Summary factor scores SD bar") + 
+  geom_bar(stat = "identity", color="black", position = position_dodge()) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2, size=1, position = position_dodge(0.9)) +
+  scale_x_discrete(name = " ") + #, limits=new_order$newNames) + labs(colour = "cluster") +
+  #guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 25, angle=60, hjust = 1), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 25), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+#violin plot
+subset_for_violin <- subset_with_clusters_matched
+subset_for_violin$Hydra_k3 <- gsub(pattern = "-1", replacement = "TD", x = subset_for_violin$Hydra_k3)
+subset_for_violin$Hydra_k3 <- gsub(pattern = "1", replacement = "Subtype 1", x = subset_for_violin$Hydra_k3)
+subset_for_violin$Hydra_k3 <- gsub(pattern = "2", replacement = "Subtype 2", x = subset_for_violin$Hydra_k3)
+subset_for_violin$Hydra_k3 <- gsub(pattern = "3", replacement = "Subtype 3", x = subset_for_violin$Hydra_k3)
+
+
+ggplot(subset_for_violin, aes(x = Hydra_k3, y = NAR_Overall_Accuracy, fill = Hydra_k3)) +  
+   geom_violin(trim = TRUE) + 
+   xlab("Subtypes") + ylab(paste0("Mean Z-scores")) +
+   scale_y_continuous(limits=c(-5, 3)) + 
+   theme(legend.position = "none",
+          axis.text.x = element_text(size = 25, angle=60, hjust = 1),
+          axis.text.y = element_text(size = 20),
+          axis.title.y = element_text(size = 30),
+          axis.title.x = element_blank(),
+          plot.title = element_text(size = 35)) +
+    stat_summary(fun.data=mean_se, 
+                 geom="pointrange") + 
+    ggtitle(paste0("Accuracy"))  
+  
+ggplot(subset_for_violin, aes(x = Hydra_k3, y = NAR_Overall_Speed, fill = Hydra_k3)) +  
+   geom_violin(trim = TRUE) + 
+   xlab("Subtypes") + ylab(paste0("Mean Z-scores")) +
+   scale_y_continuous(limits=c(-5, 3)) + 
+   theme(legend.position = "none",
+          axis.text.x = element_text(size = 25, angle=60, hjust = 1),
+          axis.text.y = element_text(size = 20),
+          axis.title.y = element_text(size = 30),
+          axis.title.x = element_blank(),
+          plot.title = element_text(size = 35)) +
+    stat_summary(fun.data=mean_se, 
+                 geom="pointrange") + 
+    ggtitle(paste0("Speed"))  
+
+
+#clustered violin
+melted <- melt(data = subset_for_violin, id.vars = c("Hydra_k3"), measure.vars = c("NAR_Overall_Accuracy", "NAR_Overall_Speed"))
+names(melted) <- c("cluster", "domain", "z")
+melted$domain <-(gsub("NAR_Overall_", "", melted$domain))
+
+#with box plot
+ggplot(melted, aes(x = domain, y = z, fill = cluster)) +  
+   geom_violin(trim = TRUE) + 
+   xlab("Domain") + ylab(paste0("Mean Z-score")) +
+  # scale_y_continuous(limits=c(-5, 3)) + 
+   geom_violin(trim=FALSE) + 
+   theme(legend.position = "right",
+         legend.title = element_blank(),
+          axis.text.x = element_text(size = 15),
+          axis.text.y = element_text(size = 15),
+          axis.title.y = element_text(size = 15),
+          axis.title.x = element_blank(),
+          plot.title = element_text(size = 20)) +
+    #stat_summary(fun.y = mean, fun.ymin = mean, fun.ymax = mean, geom = "crossbar", width = 0.5,position = position_dodge(width = .7)) + 
+    geom_boxplot(width = 0.15, position = position_dodge(0.9)) + 
+    ggtitle(paste0("Summary Scores"))
+
+#with mean lines
+ggplot(melted, aes(x = domain, y = z, fill = cluster)) +  
+   geom_violin(trim = TRUE) + 
+   xlab("Domain") + ylab(paste0("Mean Z-score")) +
+   scale_y_continuous(limits=c(-6, 3)) + 
+   geom_violin(trim=FALSE) + 
+   theme(legend.position = "right",
+         legend.title = element_blank(),
+          axis.text.x = element_text(size = 15),
+          axis.text.y = element_text(size = 15),
+          axis.title.y = element_text(size = 15),
+          axis.title.x = element_blank(),
+          plot.title = element_text(size = 20)) +
+    stat_summary(fun.y = mean, geom = "errorbar", 
+               aes(ymax = ..y.., ymin = ..y.., group = factor(cluster)),
+               width = 0.5, linetype = "dashed", position = position_dodge(0.9)) + 
+   # geom_boxplot(width = 0.15, position = position_dodge(0.9)) + 
+     ggtitle(paste0("Summary Factor Scores"))
+
+#with mean lines, different fonts
+z<-ggplot(melted, aes(x = domain, y = z, fill = cluster)) +  
+   geom_violin(trim = TRUE) + 
+   xlab("Domain") + ylab(paste0("Mean Z-score")) +
+   scale_y_continuous(limits=c(-6, 3)) + 
+   geom_violin(trim=FALSE) + 
+   theme(legend.position = "right",
+         legend.title = element_blank(),
+          axis.text.x = element_text(size = 30),
+          axis.text.y = element_text(size = 30),
+          axis.title.y = element_text(size = 30),
+          axis.title.x = element_blank(),
+          plot.title = element_text(size = 35)) +
+    stat_summary(fun.y = mean, geom = "errorbar", 
+               aes(ymax = ..y.., ymin = ..y.., group = factor(cluster)),
+               width = 0.5, linetype = "dashed", position = position_dodge(0.9)) + 
+   # geom_boxplot(width = 0.15, position = position_dodge(0.9)) + 
+     ggtitle(paste0("Summary Factor Scores"))
+
+
+#####################################
+###### By CNB Measure ###############
+#####################################
+
+####Accuracy alone####
+cluster_titles <- get_cluster_titles(hydra_cluster = num_clusters)
+numeric_vector <- get_cluster_numerical_vector(hydra_cluster = num_clusters)
+groups_list <- data.frame(cbind(c(cluster_titles), c(numeric_vector)))
+names(groups_list) <- c("cl", "numeric")
+all_mean_sd_sem <- data.frame(rep(groups_list$cl, length(cnb_accuracy_names)), rep(cnb_accuracy_names, each = length(numeric_vector)), rep(0, 1), rep(0, 1), rep(0,1))
+names(all_mean_sd_sem) <- c("cl", "cnb", "mean", "sd", "sem")
+for(cnb in cnb_accuracy_names){
+  for(num in 1:length(numeric_vector)) {
+    clst <- groups_list[num,1]
+    meas <- groups_list[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- mean_grp
+    
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sd_grp
+    sem_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])/sqrt(length(which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")))", sep="")
+    sem_grp <- eval(parse(text=as.name(sem_for_eval)))
+    all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sem_grp
+  }
+}
+
+#add sems to cnb_measures_for_plot
+names(all_mean_sd_sem) <- c("cluster", "cnb", "mean", "sd", "sem")
+accuracy_names_no_z <- toupper(gsub("_z", "", cnb_accuracy_names))
+accuracy_full_names <- extended_names[1:12,2]
+accuracy_names_orderby_system <- c("ABF","ATT","WM","VMEM","FMEM","SMEM","SPA","EMO","VR","LMEM")
+spped_names_orderby_system <- c("ABF","ATT","WM","VMEM","FMEM","SMEM","SM", "SPA","EMO","VR","MOT")
+
+  ggplot(data = all_mean_sd_sem, aes(x = factor(cnb, level = cnb_accuracy_names), y = mean, group = cluster)) + ylab("Mean Z-score") + xlab("Accuracy") + 
+  ggtitle("Accuracy") + 
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  #geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  geom_linerange(aes(ymin=mean-sem, ymax=mean+sem), size=1.5) +
+  scale_x_discrete(labels=accuracy_names_no_z, name = " ") +
+  scale_y_continuous(limits=c(-0.8,1.1)) + 
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  labs(x=NULL, y=NULL) +
+  theme(axis.text.x = element_text(size = 60, angle=70, hjust = 1), 
+        axis.text.y = element_text(size = 60),
+        axis.line.x = element_line(size = 2),
+        axis.line.y = element_line(size = 2),
+        axis.ticks = element_line(colour = "black", size = 2),
+        title = element_text(size = 60), 
+        legend.text = element_text(size = 60), 
+        plot.title = element_text(size=65),
+        legend.position = "none")
+       # legend.position = "top",
+        #legend.title=element_blank())
+  
+  ###SD
+  ggplot(data = all_mean_sd_sem, aes(x = factor(cnb, level = cnb_accuracy_names), y = mean, group = cluster)) + ylab("Mean Z-score") + xlab("Accuracy") + 
+  ggtitle("Accuracy SD") + 
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  #geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  geom_linerange(aes(ymin=mean-sd, ymax=mean+sd), size=1.5) +
+  scale_x_discrete(labels=accuracy_names_no_z, name = " ") +
+  scale_y_continuous(limits=c(-2,2)) + 
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  labs(x=NULL, y=NULL) +
+  theme(axis.text.x = element_text(size = 60, angle=70, hjust = 1), 
+        axis.text.y = element_text(size = 60),
+        axis.line.x = element_line(size = 2),
+        axis.line.y = element_line(size = 2),
+        axis.ticks = element_line(colour = "black", size = 2),
+        title = element_text(size = 60), 
+        legend.text = element_text(size = 60), 
+        plot.title = element_text(size=65),
+        legend.position = "none")
+       # legend.position = "top",
+        #legend.title=element_blank())
+
+  ggplot(data = all_mean_sd_sem, aes(x = cnb, y = mean, fill = cluster)) + 
+  ylab("Mean Z") +  
+  ggtitle("Accuracy scores SD bar") + 
+  geom_bar(stat = "identity", color="black", position = position_dodge()) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2, size=1, position = position_dodge(0.9)) +
+  scale_x_discrete(name = " ") + #, limits=new_order$newNames) + labs(colour = "cluster") +
+  #guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 25, angle=60, hjust = 1), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 25), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+####Speed alone####
+cluster_titles <- get_cluster_titles(hydra_cluster = num_clusters)
+numeric_vector <- get_cluster_numerical_vector(hydra_cluster = num_clusters)
+groups_list <- data.frame(cbind(c(cluster_titles), c(numeric_vector)))
+names(groups_list) <- c("cl", "numeric")
+all_mean_sd_sem <- data.frame(rep(groups_list$cl, length(cnb_speed_names)), rep(cnb_speed_names, each = length(numeric_vector)), rep(0, 1), rep(0, 1), rep(0,1))
+names(all_mean_sd_sem) <- c("cl", "cnb", "mean", "sd", "sem")
+for(cnb in cnb_speed_names){
+  for(num in 1:length(numeric_vector)) {
+    clst <- groups_list[num,1]
+    meas <- groups_list[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- mean_grp
+    
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sd_grp
+    sem_for_eval <- paste("sd(subset_with_clusters_matched$", cnb, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")])/sqrt(length(which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups_list[num,2], ")))", sep="")
+    sem_grp <- eval(parse(text=as.name(sem_for_eval)))
+    all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$cnb == cnb)] <- sem_grp
+  }
+}
+
+
+#add sems to cnb_measures_for_plot
+names(all_mean_sd_sem) <- c("cluster", "cnb", "mean", "sd", "sem")
+# string manipulation to get pretty labels
+speed_names_no_s_z <- toupper(gsub("_s_z", "", cnb_speed_names))
+
+speed_full_names <- extended_names[13:26,2]
+
+ggplot(data = all_mean_sd_sem, aes(x = factor(cnb, level = cnb_speed_names), y = mean, group = cluster)) + ylab("Mean Z-score") + xlab("Summary Scores") + 
+  ggtitle("Speed") + 
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  #geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  geom_linerange(aes(ymin=mean-sem, ymax=mean+sem), size=1.5) +
+  scale_x_discrete(labels=speed_names_no_s_z, name = " ") +
+  scale_y_continuous(limits=c(-0.8, 1.1)) + 
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  labs(x=NULL, y = NULL) +
+  theme(axis.text.x = element_text(size = 60, angle=70, hjust = 1), 
+        axis.text.y = element_text(size = 60),
+        axis.line.x = element_line(size = 2),
+        axis.line.y = element_line(size = 2),
+        axis.ticks = element_line(colour = "black", size = 2),
+        title = element_text(size = 60), 
+        legend.text = element_text(size = 60), 
+        plot.title = element_text(size=65),
+        legend.position = "none")
+
+ggplot(data = all_mean_sd_sem, aes(x = factor(cnb, level = cnb_speed_names), y = mean, group = cluster)) + ylab("Mean Z-score") + xlab("Summary Scores SD") + 
+  ggtitle("Speed") + 
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  #geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  geom_linerange(aes(ymin=mean-sd, ymax=mean+sd), size=1.5) +
+  scale_x_discrete(labels=speed_names_no_s_z, name = " ") +
+  scale_y_continuous(limits=c(-2, 2)) + 
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  labs(x=NULL, y = NULL) +
+  theme(axis.text.x = element_text(size = 60, angle=70, hjust = 1), 
+        axis.text.y = element_text(size = 60),
+        axis.line.x = element_line(size = 2),
+        axis.line.y = element_line(size = 2),
+        axis.ticks = element_line(colour = "black", size = 2),
+        title = element_text(size = 60), 
+        legend.text = element_text(size = 60), 
+        plot.title = element_text(size=65),
+        legend.position = "none")
+
+ ggplot(data = all_mean_sd_sem, aes(x = cnb, y = mean, fill = cluster)) + 
+  ylab("Mean Z") +  
+  ggtitle("Speed scores SD bar") + 
+  geom_bar(stat = "identity", color="black", position = position_dodge()) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2, size=1, position = position_dodge(0.9)) +
+  scale_x_discrete(name = " ") + #, limits=new_order$newNames) + labs(colour = "cluster") +
+  #guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 25, angle=60, hjust = 1), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 25), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+###################################################
+###           FDR Correct For Hydra_k3          ###
+###################################################
+
+#Look at model summaries
+models_anova <- lapply(cnb_score_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(cnb_score_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[1]) 
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+row.names(pfdr_anova) <- cnb_measure_names
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+cnb_fdr_anova <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+#make a data frame with names and fdr values (rounded to 3 decimals)
+cnb_names_and_fdr_values_anova <- data.frame(cbind(cnb_fdr_anova, round(pfdr_anova[pfdr_anova<0.05],3)))
+
+#add titles to names_and_fdr tables
+names(cnb_names_and_fdr_values_anova) <- c("cnb_measure", "p_FDR_corr")
+
+print("Linear model- Mean centered age that was then squared")
+print(cnb_names_and_fdr_values_anova)
+
+######################################################
+####Pairwise t-tests for anova-corrected lm means ####
+######################################################
+
+#put lm model into emmeans format
+cnb_emmodel_matched <- lapply(cnb_score_cluster_stats_matched, function(x) {as.list(ref_grid(x))})
+cnb_emmgrid_matched <- lapply(cnb_emmodel_matched, function(x) {as.emmGrid(x)})
+
+#run emmeans, do not include values that were not FDR corrected
+cnb_emmeans_matched <- lapply(cnb_emmgrid_matched, function(x) {emmeans(x, "Hydra_k3")})
+
+#run pairwise contrasts
+cnb_emmpairs_matched <- lapply(cnb_emmeans_matched, function(x) {pairs(x)})
+
+#Only include measures that wer fdr corrected (i.e., only keep parts of the model (or only display) ones that are corrected)
+cnb_emmpairs_matched_FDR_corrected <- cnb_emmpairs_matched[c(cnb_fdr_anova)]
+
+######Make table of contrasts, rows are names of cnb measures that are fdr corrected, columns are contrasts, values are pvalues
+
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- make_pairwise_contrast_names(num_clusters = num_clusters)
+#go through each fdr corrected cnb measure, and extract p values
+contrast_table <- lapply(cnb_emmpairs_matched_FDR_corrected, function(x) {round(summary(x)$p.value,3)})
+#get the names of the measures that were fdr corrected
+fdr_corrected_cnb <- names(contrast_table)
+#build table that will hold the name of the measure and the p values
+pairwise_table <- data.frame(matrix(nrow = length(fdr_corrected_cnb), ncol = length(contrast_names)))
+#give the appropriate names
+rownames(pairwise_table) <- fdr_corrected_cnb
+colnames(pairwise_table) <- contrast_names
+
+#loop through each measure, and manually assign the columns to be the p values
+for (measure in fdr_corrected_cnb)
+{
+  pair_pval <- contrast_table[[measure]]
+  pairwise_table[measure,] <- pair_pval
+}
+
+#add FDR correction
+pairwise_table_with_fdr <- pairwise_table
+pairwise_table_with_fdr$p_FDR_corr <- cnb_names_and_fdr_values_anova$p_FDR_corr
+
+
+#print values
+
+print("LM pairwise contrasts with FDR corrected values, CNB scores")
+print(pairwise_table_with_fdr)
+##write.csv(pairwise_table_with_fdr, "/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/csvs/pairwise_table_CNB.csv")
+
+sapply(cnb_emmpairs_matched_FDR_corrected, function(x) {print(x)})
+
+```
+```{r wrat}
+wrat <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/n9498_cnb_wrat_scores_20161215.csv")
+subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/cnb_results.rds")
+subset_w_wrat <- merge(subset_with_clusters_matched, wrat)
+subset_w_wrat <- subset_w_wrat[!is.na(subset_w_wrat$wrat4CrStd),]
+
+#bar graphs for 3 clusters
+#Raw score means: TD = 56.5 [6.42], S1 = 58.2 [6.49], S2 = 51.5 [9.3], S3 = 54.3 [8.3]
+#Std score means: TD = 106 [16.5], S1 = 109.1 [14.4], S2 = 96.4 [15.2], S3 = 102 [16.1]
+
+variable_name_string <- c("WRAT Raw Scores", "WRAT Standardized IQ") #this allows you to specify the actual titles, if different from the data frame titles
+plot_list <- plot_continuous_variables_no_ylim(data_frame = subset_w_wrat, var1 = "wrat4CrRaw", var2 = "wrat4CrStd", hydra_cluster = num_clusters, optional_variable_name_string = variable_name_string)
+for(x in 1:length(plot_list)){
+  print(plot_list[[x]])
+}
+
+#bar graphs for TD vs all depressed
+#Raw score means: TD = 56.5 [6.42], Depressed = 54.82 [8.5]
+#Std score means: TD = 106 [16.5], Depressed = 102 [16.08]
+
+variable_name_string <- c("WRAT Raw Scores", "WRAT Standardized IQ") #this allows you to specify the actual titles, if different from the data frame titles
+plot_list <- plot_continuous_variables_no_ylim(data_frame = subset_w_wrat, var1 = "wrat4CrRaw", var2 = "wrat4CrStd", hydra_cluster = 1, optional_variable_name_string = variable_name_string)
+for(x in 1:length(plot_list)){
+  print(plot_list[[x]])
+}
+
+wrat_lm_Hydra_k1 <- lm(wrat4CrStd ~ Hydra_k1, data = subset_w_wrat)
+wrat_lm_Hydra_k3 <- lm(wrat4CrStd ~ Hydra_k3, data = subset_w_wrat)
+anova_k1 <- anova(wrat_lm_Hydra_k1)
+anova_k3 <- anova(wrat_lm_Hydra_k3)
+
+#Plot means/SDs
+df_pre_hydra <- data.frame(cbind(wrat_mean = c(106, 102), wrat_sd = c(16.5, 16.1)))
+row.names(df_pre_hydra) <- c("TD", "DY")
+df_post_hydra <- data.frame(cbind(wrat_mean = c(106, 109, 96, 102), wrat_sd = c(16.5, 14.4, 15.2, 16.1)))
+row.names(df_post_hydra) <- c("TD", "S1", "S2", "S3")
+
+
+ggplot(data = df_pre_hydra, aes(x=row.names(df_pre_hydra), y = wrat_mean, fill=as.factor(row.names(df_pre_hydra)))) +
+        geom_col() +
+        geom_errorbar(aes(ymin=wrat_mean - wrat_sd, ymax=wrat_mean+wrat_sd), width=.1) +
+        theme(legend.position="none") +
+        ggtitle("WRAT Standard Before HYDRA (mean[sd]")
+
+ggplot(data = df_post_hydra, aes(x=row.names(df_post_hydra), y = wrat_mean, fill=as.factor(row.names(df_post_hydra)))) +
+        geom_col() +
+        geom_errorbar(aes(ymin=wrat_mean - wrat_sd, ymax=wrat_mean+wrat_sd), width=.1) +
+        theme(legend.position="none") +
+        ggtitle("WRAT Standard After HYDRA (mean[sd]")
+
+```
+
+```{r clinical_bifactor}
+#######################################################
+############ READ IN, MERGE AND SUBSET DATA############
+#######################################################
+
+subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/clinical_bifactor_results.rds")
+
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+#################################
+# Linear Model for each measure #
+##### Results stored in list ####
+#################################
+
+#get clinical measure names
+clinical_measure_names <- names(subset_with_clusters_matched)[grep("Bifactor", names(subset_with_clusters_matched))] #get the names of all the columns with factorv2 in the name
+clinical_measure_names <- clinical_measure_names[-grep("_ar", clinical_measure_names)] #remove age-regressed, as this was done with HYDRA
+
+#lm  and mean centered
+clinical_score_cluster_stats_matched <- lapply(clinical_measure_names, function(x) 
+{
+   lm(substitute(i ~ Hydra_k3, list(i = as.name(x))), data = subset_with_clusters_matched)
+})
+names(clinical_score_cluster_stats_matched) <- clinical_measure_names
+
+
+#lm Hydra K3 Anova
+clinical_score_cluster_stats_anova_matched <- lapply(clinical_score_cluster_stats_matched, anova) 
+names(clinical_score_cluster_stats_anova_matched) <- clinical_measure_names
+
+#Effect size
+clinical_eff_size <- lapply(clinical_measure_names, function(measure){
+  clincal_cohen_pairwise_table <- cohen_d_allpairs(data_frame = subset_with_clusters_matched, measure = measure, hydra_cluster = num_clusters)
+})
+names(clinical_eff_size) <- clinical_measure_names
+
+print(clinical_eff_size)
+############################################
+########          Plotting          ########
+############################################
+groups_list <- data.frame(cbind(c("TD", "Subtype 1", "Subtype 2", "Subtype 3"), c("-1", "1", "2", "3")))
+names(groups_list) <- c("cl", "numeric")
+all_mean_sd_sem <- data.frame(rep(groups_list$cl, 5), rep(clinical_measure_names, each = 4), rep(0, 1), rep(0, 1), rep(0,1))
+names(all_mean_sd_sem) <- c("cl", "clinical", "mean", "sd", "sem")
+for(clinical in clinical_measure_names){
+  for(num in 1:4) {
+    clst <- groups_list[num,1]
+    meas <- groups_list[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", meas, ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- mean_grp
+  
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- sd_grp
+    sem_for_eval <- paste("sd(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")])/sqrt(length(which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")))", sep="")
+    sem_grp <- eval(parse(text=as.name(sem_for_eval)))
+    all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- sem_grp
+  }
+}
+
+#remove _4factorv2 from names
+all_mean_sd_sem$clinical <- gsub("_4factorv2", "", all_mean_sd_sem$clinical)
+all_mean_sd_sem$clinical <- gsub("_", " ", all_mean_sd_sem$clinical)
+
+names(all_mean_sd_sem) <- c("cluster", "clinical", "mean", "sd", "sem")
+
+#Expand bifactor names
+clinical_bifactor_TONI_names <- c("anxious-misery", "psychosis", "externalizing", "fear", "overall psychopathology")
+new_names <- rep(clinical_bifactor_TONI_names, each = 4)
+all_mean_sd_sem$new_names <- new_names
+upper_case <- gsub(pattern = "\\b([a-z])", replacement = "\\U\\1", all_mean_sd_sem$new_names, perl = TRUE)
+all_mean_sd_sem$new_names <- upper_case
+
+#plot
+ggplot(data = all_mean_sd_sem, aes(x = clinical, y = mean, group = cluster)) + ylab("Mean Z-score")  +
+  ggtitle("Clinical Bifactor Scores") + 
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  annotate("text", x = 13, y = 0.45, label = "*", size = 20) + 
+  scale_x_discrete(limits=all_mean_sd_sem$clinical, labels=all_mean_sd_sem$new_names, name = " ") +
+  scale_y_continuous(limits=c(-0.7, 1)) +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 30, hjust = 1, angle = 60), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 30), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+###################################################
+#####              FDR Correction             #####
+###################################################
+
+## Extracting anovas with significant p values ####
+
+#model summary
+models_anova <- lapply(clinical_score_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(clinical_score_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[1]) #$coef[,"Pr(>F)"][2]) #get the p value for dep binarized
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+row.names(pfdr_anova) <- clinical_measure_names
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the NMF components that survive FDR correction
+clinical_fdr_anova <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+#make a data frame with names and fdr values (rounded to 3 decimals)
+clinical_names_and_fdr_values_anova <- data.frame(cbind(clinical_fdr_anova, round(pfdr_anova[pfdr_anova<0.05],3)))
+
+#add titles to names_and_fdr tables
+names(clinical_names_and_fdr_values_anova) <- c("clinical_measure", "p_FDR_corr")
+
+print("LM")
+print(clinical_names_and_fdr_values_anova)
+
+######################################################
+####Pairwise t-tests for anova-corrected lm means ####
+######################################################
+
+#put lm model into emmeans format
+clinical_emmodel_matched <- lapply(clinical_score_cluster_stats_matched, function(x) {as.list(ref_grid(x))})
+clinical_emmgrid_matched <- lapply(clinical_emmodel_matched, function(x) {as.emmGrid(x)})
+
+#run emmeans, do not include values that were not FDR corrected
+clinical_emmeans_matched <- lapply(clinical_emmgrid_matched, function(x) {emmeans(x, "Hydra_k3")})
+
+#run pairwise contrasts
+clinical_emmpairs_matched <- lapply(clinical_emmeans_matched, function(x) {pairs(x)})
+
+#Only include stuff that was fdr corrected (i.e., only keep parts of the model (or only display) ones that are corrected)
+clinical_emmpairs_matched_FDR_corrected <- clinical_emmpairs_matched[c(clinical_fdr_anova)]
+
+######Make table of contrasts, rows are names of clinical measures that are fdr corrected, columns are contrasts, values are pvalues
+
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- c("-1 - 1", "-1 - 2", "-1 - 3", "1 - 2", "1 - 3", "2 - 3")
+
+#go through each fdr corrected clinical measure, and extract p values
+contrast_table <- lapply(clinical_emmpairs_matched_FDR_corrected, function(x) {round(summary(x)$p.value,3)})
+
+#get the names of the clinical measures that were fdr corrected
+fdr_corrected_clinical <- names(contrast_table)
+
+#build table that will hold the name of the clinical measure and the p values
+pairwise_table <- data.frame(matrix(nrow = length(fdr_corrected_clinical), ncol = 6))
+
+#give the appropriate names
+rownames(pairwise_table) <- fdr_corrected_clinical
+colnames(pairwise_table) <- contrast_names
+
+#loop through each clinical measure, and manually assign the columns to be the p values
+for (measure in fdr_corrected_clinical)
+{
+  pair_pval <- contrast_table[[measure]]
+  pairwise_table[measure,] <- pair_pval
+}
+
+#get the 4factor2 out of the name
+fdr_corrected_clinical_gsub <- gsub("_4factorv2", "", fdr_corrected_clinical)
+rownames(pairwise_table) <- fdr_corrected_clinical_gsub
+
+#add FDR correction
+pairwise_table_with_fdr <- pairwise_table
+pairwise_table_with_fdr$p_FDR_corr <- clinical_names_and_fdr_values_anova$p_FDR_corr
+
+#print values
+
+print("LM pairwise contrasts with FDR corrected values, Bifactor scores")
+print(pairwise_table_with_fdr)
+sapply(clinical_emmpairs_matched_FDR_corrected, function(x) {print(x)})
+```
+
+```{r anxious_misery}
+
+#######################################################
+############ READ IN, MERGE AND SUBSET DATA############
+#######################################################
+
+#read in STAI anxious-misery results
+subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/anxious_misery_results.rds")
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+#### Demographics
+make_demographics_table(data_frame = subset_with_clusters_matched, hydra_cluster = num_clusters)
+
+
+#################################
+# Linear Model for each measure #
+##### Results stored in list ####
+#################################
+
+clinical_measure_names <- c("staiPreState", "staiPreTrait")
+
+#lm 
+clinical_score_cluster_stats_matched <- lapply(clinical_measure_names, function(x) 
+{
+  lm(substitute(i ~ Hydra_k3, list(i = as.name(x))), data = subset_with_clusters_matched)
+})
+names(clinical_score_cluster_stats_matched) <- clinical_measure_names
+
+
+#lm Hydra K3 Anova
+clinical_score_cluster_stats_anova_matched <- lapply(clinical_score_cluster_stats_matched, anova) 
+names(clinical_score_cluster_stats_anova_matched) <- clinical_measure_names
+
+###Effect size
+
+clinical_eff_size <- lapply(clinical_measure_names, function(measure){
+  clincal_cohen_pairwise_table <- cohen_d_allpairs(data_frame = subset_with_clusters_matched, measure = measure, hydra_cluster = num_clusters)
+})
+names(clinical_eff_size) <- clinical_measure_names
+
+print(clinical_eff_size)
+
+############################################
+########          Plotting          ########
+############################################
+groups_list <- data.frame(cbind(c("TD", "Subtype 1", "Subtype 2", "Subtype 3"), c("-1", "1", "2", "3")))
+names(groups_list) <- c("cl", "numeric")
+all_mean_sd_sem <- data.frame(rep(groups_list$cl, 2), rep(clinical_measure_names, each = 4), rep(0, 1), rep(0, 1), rep(0,1))
+names(all_mean_sd_sem) <- c("cl", "clinical", "mean", "sd", "sem")
+for(clinical in clinical_measure_names){
+  for(num in 1:4) {
+    clst <- groups_list[num,1]
+    meas <- groups_list[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", meas, ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- mean_grp
+  
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- sd_grp
+    sem_for_eval <- paste("sd(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")])/sqrt(length(which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")))", sep="")
+    sem_grp <- eval(parse(text=as.name(sem_for_eval)))
+    all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- sem_grp
+  }
+}
+
+
+names(all_mean_sd_sem) <- c("cluster", "clinical", "mean", "sd", "sem")
+
+#change bifactor names to more readable format
+clinical_bifactor_TONI_names <- c("State Anxiety", "Trait Anxiety")
+new_names <- rep(clinical_bifactor_TONI_names, each = 4)
+all_mean_sd_sem$new_names <- new_names
+
+ggplot(data = all_mean_sd_sem, aes(x = clinical, y = mean, group = cluster)) + ylab("Mean Anxiety Score")  +
+  ggtitle("State and Trait Anxiety Scores") + 
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  scale_x_discrete(limits=all_mean_sd_sem$clinical, labels=all_mean_sd_sem$new_names, name = " ") +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 20, hjust = 1, angle = 60), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 30), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+###################################################
+#####              FDR Correction             #####
+###################################################
+
+## Extracting anovas with significant p values ####
+
+#model summary
+models_anova <- lapply(clinical_score_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(clinical_score_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[1]) #get the p value for dep binarized
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+row.names(pfdr_anova) <- clinical_measure_names
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+clinical_fdr_anova <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+#make a data frame with names and fdr values (rounded to 3 decimals)
+clinical_names_and_fdr_values_anova <- data.frame(cbind(clinical_fdr_anova, round(pfdr_anova[pfdr_anova<0.05],3)))
+
+#add titles to names_and_fdr tables
+names(clinical_names_and_fdr_values_anova) <- c("clinical_measure", "p_FDR_corr")
+
+print("LM Clinical")
+print(clinical_names_and_fdr_values_anova)
+
+######################################################
+####Pairwise t-tests for anova-corrected lm means ####
+######################################################
+
+#put lm model into emmeans format
+clinical_emmodel_matched <- lapply(clinical_score_cluster_stats_matched, function(x) {as.list(ref_grid(x))})
+clinical_emmgrid_matched <- lapply(clinical_emmodel_matched, function(x) {as.emmGrid(x)})
+
+#run emmeans, do not include values that were not FDR corrected
+clinical_emmeans_matched <- lapply(clinical_emmgrid_matched, function(x) {emmeans(x, "Hydra_k3")})
+
+#run pairwise contrasts
+clinical_emmpairs_matched <- lapply(clinical_emmeans_matched, function(x) {pairs(x)})
+
+#Only include stuff that was fdr corrected (i.e., only keep parts of the model (or only display) ones that are corrected)
+clinical_emmpairs_matched_FDR_corrected <- clinical_emmpairs_matched[c(clinical_fdr_anova)]
+
+######Make table of contrasts, rows are names of clinical measures that are fdr corrected, columns are contrasts, values are pvalues
+
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- c("-1 - 1", "-1 - 2", "-1 - 3", "1 - 2", "1 - 3", "2 - 3")
+
+#go through each fdr corrected clinical measure, and extract p values
+contrast_table <- lapply(clinical_emmpairs_matched_FDR_corrected, function(x) {round(summary(x)$p.value,3)})
+
+#get the names of the clinical measures that were fdr corrected
+fdr_corrected_clinical <- names(contrast_table)
+
+#build table that will hold the name of the clinical measure and the p values
+pairwise_table <- data.frame(matrix(nrow = length(fdr_corrected_clinical), ncol = 6))
+
+#give the appropriate names
+rownames(pairwise_table) <- fdr_corrected_clinical
+colnames(pairwise_table) <- contrast_names
+
+#loop through each clinical measure, and manually assign the columns to be the p values
+for (measure in fdr_corrected_clinical)
+{
+  pair_pval <- contrast_table[[measure]]
+  pairwise_table[measure,] <- pair_pval
+}
+
+#add FDR correction
+pairwise_table_with_fdr <- pairwise_table
+pairwise_table_with_fdr$p_FDR_corr <- clinical_names_and_fdr_values_anova$p_FDR_corr
+
+#print values
+print("Pairwise contrasts with FDR corrected values, STAI")
+print(pairwise_table_with_fdr)
+sapply(clinical_emmpairs_matched_FDR_corrected, function(x) {print(x)})
+
+```
+
+```{r nback}
+
+#######################################################
+############ READ IN, MERGE AND SUBSET DATA############
+#######################################################
+
+#read in nback rds, which contains mean % signal change
+
+subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/nback_results.rds")
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+#set parcellations to the task_active areas
+parcellations <- names(subset_with_clusters_matched[grep ("nback_func_sc", names(subset_with_clusters_matched))][1:21])
+
+#get number of measures (to be used later on when trying to make graphs)
+num_measures <- length(parcellations)
+
+#### demographics ###
+make_demographics_table(data_frame = subset_with_clusters_matched, hydra_cluster = num_clusters)
+
+#################################
+# Linear Model for each measure #
+##### Results stored in list ####
+#################################
+
+#lm 
+parcellation_cluster_stats_matched <- lapply(parcellations, function(parcellation) 
+{
+  lm(substitute(i ~ nbackRelMeanRMSMotion + Hydra_k3, list(i = as.name(parcellation))), data = subset_with_clusters_matched)
+})
+names(parcellation_cluster_stats_matched) <- parcellations
+
+#lm Hydra K3 Anova
+parcellation_cluster_stats_anova_matched <- lapply(parcellation_cluster_stats_matched, anova) 
+names(parcellation_cluster_stats_anova_matched) <- parcellations
+
+#construct data frame 
+groups <- data.frame(cbind(cluster_titles, numeric_vector))
+names(groups) <- c("cl", "numeric")
+df_names <- data.frame(rep(groups$cl, num_measures), rep(parcellations, each = total_num_groups))
+names(df_names) <- c("cl", "parcellation")
+
+df_mean_sd_sem <- NULL
+for(parcellation in parcellations) {
+  mean_sd_sem <- data_frame_mean_sd_sem(data_frame = subset_with_clusters_matched, variable = parcellation, hydra_cluster = num_clusters)
+  df_mean_sd_sem <- rbind(df_mean_sd_sem, mean_sd_sem)
+}
+
+#combine data frames and remove the extra cluster names
+all_mean_sd_sem <- data.frame(df_names, df_mean_sd_sem)
+all_mean_sd_sem <- subset(all_mean_sd_sem, select = -c(cl.1))
+
+for(parcellation in parcellations){
+  for(num in 1:total_num_groups) {
+    clst <- groups[num,1]
+    meas <- groups[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", parcellation, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups[num,2], ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$parcellation == parcellation)] <- mean_grp
+    
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", parcellation, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$parcellation == parcellation)] <- sd_grp
+    sem_calc <- paste0("all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$parcellation == parcellation)] <- all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$parcellation == parcellation)]/sqrt(length(which(subset_with_clusters_matched$Hydra_k", num_clusters," == meas)))")
+    eval(parse(text=as.name(sem_calc)))
+    
+  }
+}
+
+###################################################
+## Extracting anovas with significant p values ####
+###################################################
+#Look at model summaries
+models_anova <- lapply(parcellation_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[2]) 
+f_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"F value"[2])
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+f_anova <- as.data.frame(f_anova)
+
+#print BEFORE FDR correction 
+print("LM N-back uncorrected")
+print(p_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+
+#change row names
+row.names(pfdr_anova) <- parcellations
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+parcellation_fdr_anova <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+#make a data frame with names and fdr values (rounded to 3 decimals)
+parcellation_names_and_fdr_values_anova <- data.frame(cbind(parcellation_fdr_anova, round(pfdr_anova[pfdr_anova<0.05],4)))
+
+#add titles to names_and_fdr tables
+names(parcellation_names_and_fdr_values_anova) <- c("parcellation", "p_FDR_corr")
+
+print("FDR corrected")
+print(parcellation_names_and_fdr_values_anova)
+
+######################################################
+####Pairwise t-tests for anova-corrected lm means ####
+######################################################
+#######THIS ONLY WORKS FOR 3 CLUSTERS
+
+#put lm model into emmeans format
+parcellation_emmodel_AG_matched <- lapply(parcellation_cluster_stats_matched, function(x) {as.list(ref_grid(x))})
+parcellation_emmgrid_AG_matched <- lapply(parcellation_emmodel_AG_matched, function(x) {as.emmGrid(x)})
+
+#run emmeans
+parcellation_emmeans_AG_matched <- lapply(parcellation_emmgrid_AG_matched, function(x) {emmeans(x, "Hydra_k3")})
+
+#run pairwise contrasts
+parcellation_emmpairs_AG_matched <- lapply(parcellation_emmeans_AG_matched, function(x) {pairs(x)})
+
+#Only include stuff that was fdr corrected (i.e., only keep parts of the model (or only display) ones that are corrected),this will be null if nothing was corrected
+parcellation_emmpairs_AG_matched_FDR_corrected <- parcellation_emmpairs_AG_matched[c(parcellation_fdr_anova)]
+
+
+
+################
+####Corrected #######
+######Make table of contrasts, rows are names of brain regions that are fdr corrected, columns are contrasts, values are pvalues
+
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- c("-1 - 1", "-1 - 2", "-1 - 3", "1 - 2", "1 - 3", "2 - 3")
+
+#go through each fdr corrected brain region, and extract p values
+contrast_table <- lapply(parcellation_emmpairs_AG_matched_FDR_corrected, function(x) {round(summary(x)$p.value,3)})
+
+#get the names of the brain regions that were fdr corrected
+fdr_corrected_brain_regions <- names(contrast_table)
+
+#build table that will hold the name of the brain region and the p values
+pairwise_table <- data.frame(matrix(nrow = length(fdr_corrected_brain_regions), ncol = 6))
+
+#give the appropriate names
+rownames(pairwise_table) <- fdr_corrected_brain_regions
+colnames(pairwise_table) <- contrast_names
+
+#loop through each brain region, and manually assign the columns to be the p values
+for (region in fdr_corrected_brain_regions)
+{
+  pair_pval <- contrast_table[[region]]
+  pairwise_table[region,] <- pair_pval
+}
+
+#get fdr correcting for pairwise contrasts
+pairwise_table_post_pairwise_fdr <- pairwise_table[,4:6]
+for (region in fdr_corrected_brain_regions)
+{
+  pair_pval <- contrast_table[[region]][4:6]
+  pairwise_fdr <- p.adjust(pair_pval,method="fdr")
+  pairwise_table_post_pairwise_fdr[region,] <- pairwise_fdr
+}
+
+#Add FDR correction
+pairwise_table_with_fdr <- pairwise_table
+pairwise_table_with_fdr$p_FDR_corr <- parcellation_names_and_fdr_values_anova$p_FDR_corr
+
+print ("LM pairwise contrasts and FDR corrrected values")
+print(pairwise_table_with_fdr)
+
+sapply(parcellation_emmpairs_AG_matched_FDR_corrected, function(x) {print(x)})
+
+
+###Effect size
+
+parcellation_eff_size <- lapply(fdr_corrected_brain_regions, function(brain_region){
+  cohen_pairwise_table <- cohen_d_allpairs(data_frame = subset_with_clusters_matched, measure = brain_region, hydra_cluster = num_clusters)
+})
+names(parcellation_eff_size) <- fdr_corrected_brain_regions
+
+print(parcellation_eff_size)
+
+#####################################
+#### graph only the significant areas###
+########################################
+parcellation_task_active <- parcellation_names_and_fdr_values_anova$parcellation
+parcellations <- parcellation_task_active
+num_measures <- length(parcellations)
+
+#construct data frame of names parcellations
+df_names <- data.frame(rep(groups$cl, num_measures), rep(parcellations, each = total_num_groups))
+names(df_names) <- c("cl", "parcellation")
+
+#construct mean_sd_sem data frame
+df_mean_sd_sem <- NULL
+for(parcellation in parcellations) {
+  mean_sd_sem <- data_frame_mean_sd_sem(data_frame = subset_with_clusters_matched, variable = parcellation, hydra_cluster = num_clusters)
+  df_mean_sd_sem <- rbind(df_mean_sd_sem, mean_sd_sem)
+}
+
+#combine data frames and remove the extra cluster names
+all_mean_sd_sem <- data.frame(df_names, df_mean_sd_sem)
+all_mean_sd_sem <- subset(all_mean_sd_sem, select = -c(cl.1))
+
+for(parcellation in parcellations){
+  for(num in 1:total_num_groups) {
+    clst <- groups[num,1]
+    meas <- groups[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", parcellation, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups[num,2], ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$parcellation == parcellation)] <- mean_grp
+    
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", parcellation, "[which(subset_with_clusters_matched$Hydra_k", num_clusters, " == ", groups[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$parcellation == parcellation)] <- sd_grp
+    sem_calc <- paste0("all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$parcellation == parcellation)] <- all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$parcellation == parcellation)]/sqrt(length(which(subset_with_clusters_matched$Hydra_k", num_clusters," == meas)))")
+    eval(parse(text=as.name(sem_calc)))
+    
+  }
+}
+
+#parcellation naming 
+parcellations_newNames <- gsub("nback_func_sc_", "", parcellations) #removes the nback_func_sc_
+parcellations_newNames <- gsub("_", " ", parcellations_newNames) #converts underscores to spaces
+parcellations_newNames <- gsub(" r", " Right", parcellations_newNames) #converts r to Right
+parcellations_newNames <- gsub(" l", " Left", parcellations_newNames) #converts l to Left
+parcellations_newNames <- gsub("ant", "Anterior", parcellations_newNames) #converts ant to Anterior
+parcellations_newNames <- gsub("post", "Posterior", parcellations_newNames) #converts post to Posterior
+parcellations_newNames <- gsub("hipp", "hippocampus", parcellations_newNames)
+parcellations_newNames <- gsub("rusI", "rus I", parcellations_newNames)
+parcellations_newNames <- gsub("fp", "Frontal Pole", parcellations_newNames)
+parcellations_newNames <- gsub("mfg", "dorsal frontal", parcellations_newNames)
+parcellations_newNames <- gsub("precun", "precuneus", parcellations_newNames)
+parcellations_newNames <- gsub("pcc", "posterior cingulate cortex", parcellations_newNames)
+parcellations_newNames <- gsub("dacc", "anterior cingulate", parcellations_newNames)
+parcellations_newNames <- gsub("dlpfc", "DLPFC", parcellations_newNames)
+parcellations_newNames <- gsub("vmpfc", "vmPFC", parcellations_newNames)
+parcellations_newNames <- gsub("thal", "thalamus", parcellations_newNames)
+parcellations_newNames <- gsub(pattern = "\\b([a-z])", replacement = "\\U\\1", parcellations_newNames, perl = TRUE)
+parcellations_newNames <- gsub("Vmpfc", "vmPFC", parcellations_newNames)
+to_add <- rep(parcellations_newNames, each = num_clusters + 1)
+all_mean_sd_sem$newNames <- to_add
+
+#ordering by ascending activation
+new_order <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/csvs/all_mean_sd_sem_nback_sorted_6task_active.csv")
+ggplot(data = new_order, aes(x = newNames, y = mean, group = cl)) + ylab("% Signal Change") +  
+  ggtitle("N-back Functional Regions of Interest") + 
+  geom_line(aes(color=cl, size=.1), show.legend = F) +
+  geom_point(aes(color=cl)) + 
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  scale_x_discrete(name = " ", limits=new_order$newNames) + labs(colour = "cluster") +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 25, angle=60, hjust = 1), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 30), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+#ordering by ascending activation; Bar graph
+new_order <- read.csv("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/csvs/all_mean_sd_sem_nback_sorted_6task_active.csv")
+ggplot(data = new_order, aes(x = newNames, y = mean, fill = cl)) + 
+  ylab("% Signal Change") +  
+  ggtitle("N-back Functional Regions of Interest") + 
+  #geom_line(aes(color=cl, size=.1), show.legend = F) +
+  #geom_point(aes(color=cl)) + 
+  geom_bar(stat = "identity", color="black", position = position_dodge()) +
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.2, size=1, position = position_dodge(0.9)) +
+  scale_x_discrete(name = " ") + #, limits=new_order$newNames) + labs(colour = "cluster") +
+  #guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 25, angle=60, hjust = 1), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 25), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+
+```
+
+
+```{r Age_by_sex_nback }
+#Set parcellations to represent areas that were FDR-corrected from nback in previous section
+parcellations <- parcellation_fdr_anova
+
+#get number of measures (to be used later on when trying to make graphs)
+num_measures <- length(parcellations)
+
+#lm 
+parcellation_cluster_stats_matched <- lapply(parcellations, function(parcellation) 
+{
+  lm(substitute(i ~ nbackRelMeanRMSMotion + age_in_years*sex + Hydra_k3, list(i = as.name(parcellation))), data = subset_with_clusters_matched)
+})
+names(parcellation_cluster_stats_matched) <- parcellations
+
+#lm Hydra K3 Anova
+parcellation_cluster_stats_anova_matched <- lapply(parcellation_cluster_stats_matched, anova) 
+names(parcellation_cluster_stats_anova_matched) <- parcellations
+
+
+###################################################
+## Extracting anovas with significant p values ####
+###################################################
+#Look at model summaries
+models_anova <- lapply(parcellation_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[5]) 
+f_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"F value"[5])
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+f_anova <- as.data.frame(f_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+
+#change row names
+row.names(pfdr_anova) <- parcellations
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+parcellation_fdr_anova_age_by_sex <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+if (length(parcellation_fdr_anova) == 0) {
+  print("Age by Group interactions for Nback regions of interest all P=NS")
+} else {
+  #make a data frame with names and fdr values (rounded to 3 decimals)
+  parcellation_names_and_fdr_values_anova_age_by_sex <- data.frame(cbind(parcellation_fdr_anova_age_by_sex, round(pfdr_anova[pfdr_anova<0.05],4)))
+
+  #add titles to names_and_fdr tables
+  names(parcellation_names_and_fdr_values_anova_age_by_sex) <- c("parcellation", "p_FDR_corr")
+
+  print("FDR corrected")
+  print(parcellation_names_and_fdr_values_anova_age_by_sex)
+}
+
+```
+```{r Age_by_group_nback}
+#Set parcellations to represent areas that were FDR-corrected from nback in previous section
+parcellations <- parcellation_fdr_anova
+
+#get number of measures (to be used later on when trying to make graphs)
+num_measures <- length(parcellations)
+
+#lm 
+parcellation_cluster_stats_matched <- lapply(parcellations, function(parcellation) 
+{
+  lm(substitute(i ~ nbackRelMeanRMSMotion + age_in_years*Hydra_k3 + Hydra_k3, list(i = as.name(parcellation))), data = subset_with_clusters_matched)
+})
+names(parcellation_cluster_stats_matched) <- parcellations
+
+#lm Hydra K3 Anova
+parcellation_cluster_stats_anova_matched <- lapply(parcellation_cluster_stats_matched, anova) 
+names(parcellation_cluster_stats_anova_matched) <- parcellations
+
+
+###################################################
+## Extracting anovas with significant p values ####
+###################################################
+#Look at model summaries
+models_anova <- lapply(parcellation_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[4]) 
+f_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"F value"[4])
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+f_anova <- as.data.frame(f_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+
+#change row names
+row.names(pfdr_anova) <- parcellations
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+parcellation_fdr_anova_age_by_group <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+if (length(parcellation_fdr_anova) == 0) {
+  print("Age by Sex interactions for Nback regions of interest all P=NS")
+} else {
+  #make a data frame with names and fdr values (rounded to 3 decimals)
+  parcellation_names_and_fdr_values_anova_age_by_group <- data.frame(cbind(parcellation_fdr_anova_age_by_group, round(pfdr_anova[pfdr_anova<0.05],4)))
+
+  #add titles to names_and_fdr tables
+  names(parcellation_names_and_fdr_values_anova_age_by_group) <- c("parcellation", "p_FDR_corr")
+
+  print("FDR corrected")
+  print(parcellation_names_and_fdr_values_anova_age_by_group)
+}
+
+
+
+```
+```{r parcellations_movement}
+
+#Set parcellations to represent areas that were FDR-corrected from nback in previous section
+parcellations <- parcellation_fdr_anova
+
+#get number of measures (to be used later on when trying to make graphs)
+num_measures <- length(parcellations)
+
+#lm 
+parcellation_cluster_stats_matched <- lapply(parcellations, function(parcellation) 
+{
+  lm(substitute(i ~ nbackRelMeanRMSMotion*Hydra_k3, list(i = as.name(parcellation))), data = subset_with_clusters_matched)
+})
+names(parcellation_cluster_stats_matched) <- parcellations
+
+#lm Hydra K3 Anova
+parcellation_cluster_stats_anova_matched <- lapply(parcellation_cluster_stats_matched, anova) 
+names(parcellation_cluster_stats_anova_matched) <- parcellations
+
+
+###################################################
+## Extracting anovas with significant p values ####
+###################################################
+#Look at model summaries
+models_anova <- lapply(parcellation_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[3]) 
+f_anova <- sapply(parcellation_cluster_stats_anova_matched, function(v) v$"F value"[3])
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+f_anova <- as.data.frame(f_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+
+#change row names
+row.names(pfdr_anova) <- parcellations
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the components that survive FDR correction
+parcellation_fdr_anova_movement <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+if (length(parcellation_fdr_anova) == 0) {
+  print("Motion by Group interactions for Nback regions of interest all P=NS")
+} else {
+  #make a data frame with names and fdr values (rounded to 3 decimals)
+  parcellation_names_and_fdr_values_anova_movement <- data.frame(cbind(parcellation_fdr_anova_movement, round(pfdr_anova[pfdr_anova<0.05],4)))
+
+  #add titles to names_and_fdr tables
+  names(parcellation_names_and_fdr_values_anova_movement) <- c("parcellation", "p_FDR_corr")
+
+  print("FDR corrected")
+  print(parcellation_names_and_fdr_values_anova_movement)
+}
+
+```
+```{r nback_performance_all_dprime}
+
+#Dprime statistics for nback performance
+
+#read in nback cluster and demographics data
+nback_subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/nback_results.rds")
+
+#read in nback behavior (accuracy/performance data)
+nback_behavior <- read.csv('/Users/eballer/BBL/from_chead/ballerDepHeterogen/data/neuroimaging/nback/n1601_nbackBehavior_from_20160207_dataRelease_20161027.csv')
+
+#merge together
+nback_behavior_with_clusters <- merge(nback_subset_with_clusters_matched, nback_behavior, by = c("bblid", "scanid"))
+
+#subset people with missing 2backDPrime - everyone has dPrime, no subjects removed
+nback_behavior_with_clusters <- nback_behavior_with_clusters[!is.na(nback_behavior_with_clusters$nbackBehAllDprime),]
+
+#lm 
+lm_nback_behavior <- lm(nbackBehAllDprime ~ Hydra_k3, data = nback_behavior_with_clusters)
+
+#anova
+anova_nback_behavior <- anova(lm_nback_behavior)
+
+#pairwise tests
+
+#put lm model into emmeans format
+emmodel<- ref_grid(lm_nback_behavior)
+emmgrid <- as.emmGrid(emmodel)
+
+#run emmeans
+emmeans <- emmeans(emmgrid, "Hydra_k3")
+print(emmeans)
+
+#run pairwise contrasts
+emmpairs <- pairs(emmeans)
+print(emmpairs)
+
+#contrast table construction
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- c("-1 - 1", "-1 - 2", "-1 - 3", "1 - 2", "1 - 3", "2 - 3")
+
+#p_values
+contrast_table <- round(data.frame(emmpairs)$p.value, 3)
+
+#assign names to contrast table
+names(contrast_table) <- contrast_names
+
+contrast_table <- as.data.frame(t(contrast_table))
+
+row.names(contrast_table) <- c("Behavior d'")
+
+contrast_table$"F value" <- round(anova_nback_behavior$`F value`[1],3)
+contrast_table$"Pr(>F)" <- round(anova_nback_behavior$`Pr(>F)`[1],4)
+
+#display
+print(contrast_table)
+
+#graph
+graphing_df <- data.frame(subtype = c("TD", "Subtype 1", "Subtype 2", "Subtype 3"), 
+                          mean = data.frame(emmeans)[,2],
+                          sem = data.frame(emmeans)[,3])
+#graphing_df$subtype <- as.facter(graphing_df$subtype)
+#graphing_df$
+plot_dprime<- ggplot(data=graphing_df, aes(x=subtype, y=mean)) +
+  ylab("Mean d'") + xlab("Subtype") +
+  ggtitle("Performance by Subtype") + 
+  geom_line(aes(color=subtype, size=.1), show.legend = F) +
+  geom_point(aes(color=subtype, size=.2)) + 
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  scale_x_discrete(name = " ") +
+  scale_y_continuous(limits = c(0,4)) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 40),
+        axis.title.y = element_text(size = 30),
+        axis.text.x = element_text(size = 30, angle=60, hjust = 1), 
+        axis.text.y = element_text(size = 30))
+plot_dprime
+
+```
+```{r Imaging_vs_nonimaging_clinical}
+# Get whole group
+ subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/clinical_bifactor_results.rds")
+listVars <- c("Race", "Sex", "Maternal Ed", "Age", "Depression", "Imaging") #Race 1 = caucasian, Maternal Ed = years, age = years, dep 1 = dep, 0 = non_dep
+
+#get just people in imaging
+subset_nback <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/nback_results.rds")
+
+#add a column that indicated whether subject has imaging; TRUE = yes, FALSE = no
+subset_with_clusters_matched$inImaging <- subset_with_clusters_matched$bblid %in% subset_nback$bblid
+
+#binarize, with imaging; 1 equals w/imaging, 0 = without imaging
+subset_with_clusters_matched$inImaging <- ifelse(subset_with_clusters_matched$inImaging, 1, 0)
+
+#get cluster names
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+demo <- data.frame(subset_with_clusters_matched$race_binarized, subset_with_clusters_matched$sex, subset_with_clusters_matched$medu1, subset_with_clusters_matched$age_in_years, subset_with_clusters_matched$dep_binarized, subset_with_clusters_matched$inImaging)
+
+names(demo) <- c(listVars)
+  
+  #Change categorical values to have names
+  demo$Depression <- ifelse(demo$Depression == 1, "Depressed", "Non-depressed")
+  demo$Race <- ifelse(demo$Race == 1, "Caucasian", "Non-caucasian")
+  demo$Sex <- ifelse(demo$Sex == 1, "Male", "Female")
+  demo$Imaging <- ifelse(demo$Imaging == 1, "Wtih imaging", "W/O imaging")
+  
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+  
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex", "Imaging")
+  
+  #create demographics table
+  demo_table <- CreateTableOne(vars = listVars, data = demo, factorVars = cat_variables, strata = c("Depression"))
+  print(demo_table, showAllLevels = TRUE)
+  
+  demo_table <- CreateTableOne(vars = listVars, data = demo, factorVars = cat_variables, strata = c("Imaging"))
+  print(demo_table, showAllLevels = TRUE)
+  
+  #clinical data
+  
+ 
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+#################################
+# Linear Model for each measure #
+##### Results stored in list ####
+#################################
+
+w_imaging <- subset_with_clusters_matched[which(subset_with_clusters_matched$inImaging == 1),]
+wo_imaging <- subset_with_clusters_matched[which(subset_with_clusters_matched$inImaging == 0),]
+
+#get clinical measure names
+clinical_measure_names <- names(subset_with_clusters_matched)[grep("Bifactor", names(subset_with_clusters_matched))] #get the names of all the columns with factorv2 in the name
+clinical_measure_names <- clinical_measure_names[-grep("_ar", clinical_measure_names)] #remove age-regressed, as this was done with HYDRA
+
+
+#let's analyze w_imaging first
+
+#rename subset_with_clusters_matched to point at w_imaging group
+
+subset_with_clusters_matched <- w_imaging
+
+# demographics
+#get cluster names
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+demo <- data.frame(subset_with_clusters_matched$race_binarized, subset_with_clusters_matched$sex, subset_with_clusters_matched$medu1, subset_with_clusters_matched$age_in_years, subset_with_clusters_matched$dep_binarized, subset_with_clusters_matched$inImaging)
+
+names(demo) <- c(listVars)
+  
+  #Change categorical values to have names
+  demo$Depression <- ifelse(demo$Depression == 1, "Depressed", "Non-depressed")
+  demo$Race <- ifelse(demo$Race == 1, "Caucasian", "Non-caucasian")
+  demo$Sex <- ifelse(demo$Sex == 1, "Male", "Female")
+  
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+  
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex", "Imaging")
+  
+  #create demographics table
+  demo_table <- CreateTableOne(vars = listVars, data = demo, factorVars = cat_variables, strata = c("Depression"))
+  print(demo_table, showAllLevels = TRUE)
+
+  
+#lm  and mean centered
+clinical_score_cluster_stats_matched <- lapply(clinical_measure_names, function(x) 
+{
+   lm(substitute(i ~ Hydra_k3, list(i = as.name(x))), data = subset_with_clusters_matched)
+})
+names(clinical_score_cluster_stats_matched) <- clinical_measure_names
+
+
+#lm Hydra K3 Anova
+clinical_score_cluster_stats_anova_matched <- lapply(clinical_score_cluster_stats_matched, anova) 
+names(clinical_score_cluster_stats_anova_matched) <- clinical_measure_names
+
+#Effect size
+clinical_eff_size <- lapply(clinical_measure_names, function(measure){
+  clincal_cohen_pairwise_table <- cohen_d_allpairs(data_frame = subset_with_clusters_matched, measure = measure, hydra_cluster = num_clusters)
+})
+names(clinical_eff_size) <- clinical_measure_names
+
+print(clinical_eff_size)
+############################################
+########          Plotting          ########
+############################################
+groups_list <- data.frame(cbind(c("TD", "Subtype 1", "Subtype 2", "Subtype 3"), c("-1", "1", "2", "3")))
+names(groups_list) <- c("cl", "numeric")
+all_mean_sd_sem <- data.frame(rep(groups_list$cl, 5), rep(clinical_measure_names, each = 4), rep(0, 1), rep(0, 1), rep(0,1))
+names(all_mean_sd_sem) <- c("cl", "clinical", "mean", "sd", "sem")
+for(clinical in clinical_measure_names){
+  for(num in 1:4) {
+    clst <- groups_list[num,1]
+    meas <- groups_list[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", meas, ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- mean_grp
+  
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- sd_grp
+    sem_for_eval <- paste("sd(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")])/sqrt(length(which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")))", sep="")
+    sem_grp <- eval(parse(text=as.name(sem_for_eval)))
+    all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- sem_grp
+  }
+}
+
+#remove _4factorv2 from names
+all_mean_sd_sem$clinical <- gsub("_4factorv2", "", all_mean_sd_sem$clinical)
+all_mean_sd_sem$clinical <- gsub("_", " ", all_mean_sd_sem$clinical)
+
+names(all_mean_sd_sem) <- c("cluster", "clinical", "mean", "sd", "sem")
+
+#Expand bifactor names
+clinical_bifactor_TONI_names <- c("anxious-misery", "psychosis", "externalizing", "fear", "overall psychopathology")
+new_names <- rep(clinical_bifactor_TONI_names, each = 4)
+all_mean_sd_sem$new_names <- new_names
+upper_case <- gsub(pattern = "\\b([a-z])", replacement = "\\U\\1", all_mean_sd_sem$new_names, perl = TRUE)
+all_mean_sd_sem$new_names <- upper_case
+
+#plot
+ggplot(data = all_mean_sd_sem, aes(x = clinical, y = mean, group = cluster)) + ylab("Mean Z-score")  +
+  ggtitle("Clinical Bifactor Scores") + 
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  annotate("text", x = 13, y = 0.45, label = "*", size = 20) + 
+  scale_x_discrete(limits=all_mean_sd_sem$clinical, labels=all_mean_sd_sem$new_names, name = " ") +
+  scale_y_continuous(limits=c(-0.7, 1)) +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 30, hjust = 1, angle = 60), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 30), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+###################################################
+#####              FDR Correction             #####
+###################################################
+
+## Extracting anovas with significant p values ####
+
+#model summary
+models_anova <- lapply(clinical_score_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(clinical_score_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[1]) #$coef[,"Pr(>F)"][2]) #get the p value for dep binarized
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+row.names(pfdr_anova) <- clinical_measure_names
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the NMF components that survive FDR correction
+clinical_fdr_anova <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+#make a data frame with names and fdr values (rounded to 3 decimals)
+clinical_names_and_fdr_values_anova <- data.frame(cbind(clinical_fdr_anova, round(pfdr_anova[pfdr_anova<0.05],3)))
+
+#add titles to names_and_fdr tables
+names(clinical_names_and_fdr_values_anova) <- c("clinical_measure", "p_FDR_corr")
+
+print("LM")
+print(clinical_names_and_fdr_values_anova)
+
+######################################################
+####Pairwise t-tests for anova-corrected lm means ####
+######################################################
+
+#put lm model into emmeans format
+clinical_emmodel_matched <- lapply(clinical_score_cluster_stats_matched, function(x) {as.list(ref_grid(x))})
+clinical_emmgrid_matched <- lapply(clinical_emmodel_matched, function(x) {as.emmGrid(x)})
+
+#run emmeans, do not include values that were not FDR corrected
+clinical_emmeans_matched <- lapply(clinical_emmgrid_matched, function(x) {emmeans(x, "Hydra_k3")})
+
+#run pairwise contrasts
+clinical_emmpairs_matched <- lapply(clinical_emmeans_matched, function(x) {pairs(x)})
+
+#Only include stuff that was fdr corrected (i.e., only keep parts of the model (or only display) ones that are corrected)
+clinical_emmpairs_matched_FDR_corrected <- clinical_emmpairs_matched[c(clinical_fdr_anova)]
+
+######Make table of contrasts, rows are names of clinical measures that are fdr corrected, columns are contrasts, values are pvalues
+
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- c("-1 - 1", "-1 - 2", "-1 - 3", "1 - 2", "1 - 3", "2 - 3")
+
+#go through each fdr corrected clinical measure, and extract p values
+contrast_table <- lapply(clinical_emmpairs_matched_FDR_corrected, function(x) {round(summary(x)$p.value,3)})
+
+#get the names of the clinical measures that were fdr corrected
+fdr_corrected_clinical <- names(contrast_table)
+
+#build table that will hold the name of the clinical measure and the p values
+pairwise_table <- data.frame(matrix(nrow = length(fdr_corrected_clinical), ncol = 6))
+
+#give the appropriate names
+rownames(pairwise_table) <- fdr_corrected_clinical
+colnames(pairwise_table) <- contrast_names
+
+#loop through each clinical measure, and manually assign the columns to be the p values
+for (measure in fdr_corrected_clinical)
+{
+  pair_pval <- contrast_table[[measure]]
+  pairwise_table[measure,] <- pair_pval
+}
+
+#get the 4factor2 out of the name
+fdr_corrected_clinical_gsub <- gsub("_4factorv2", "", fdr_corrected_clinical)
+rownames(pairwise_table) <- fdr_corrected_clinical_gsub
+
+#add FDR correction
+pairwise_table_with_fdr <- pairwise_table
+pairwise_table_with_fdr$p_FDR_corr <- clinical_names_and_fdr_values_anova$p_FDR_corr
+
+#print values
+
+print("LM pairwise contrasts with FDR corrected values, Bifactor scores")
+print(pairwise_table_with_fdr)
+
+
+
+
+subset_with_clusters_matched <- wo_imaging
+#lm  and mean centered
+clinical_score_cluster_stats_matched <- lapply(clinical_measure_names, function(x) 
+{
+   lm(substitute(i ~ Hydra_k3, list(i = as.name(x))), data = subset_with_clusters_matched)
+})
+names(clinical_score_cluster_stats_matched) <- clinical_measure_names
+
+
+#lm Hydra K3 Anova
+clinical_score_cluster_stats_anova_matched <- lapply(clinical_score_cluster_stats_matched, anova) 
+names(clinical_score_cluster_stats_anova_matched) <- clinical_measure_names
+
+#Effect size
+clinical_eff_size <- lapply(clinical_measure_names, function(measure){
+  clincal_cohen_pairwise_table <- cohen_d_allpairs(data_frame = subset_with_clusters_matched, measure = measure, hydra_cluster = num_clusters)
+})
+names(clinical_eff_size) <- clinical_measure_names
+
+print(clinical_eff_size)
+############################################
+########          Plotting          ########
+############################################
+groups_list <- data.frame(cbind(c("TD", "Subtype 1", "Subtype 2", "Subtype 3"), c("-1", "1", "2", "3")))
+names(groups_list) <- c("cl", "numeric")
+all_mean_sd_sem <- data.frame(rep(groups_list$cl, 5), rep(clinical_measure_names, each = 4), rep(0, 1), rep(0, 1), rep(0,1))
+names(all_mean_sd_sem) <- c("cl", "clinical", "mean", "sd", "sem")
+for(clinical in clinical_measure_names){
+  for(num in 1:4) {
+    clst <- groups_list[num,1]
+    meas <- groups_list[num,2]
+    mean_for_eval <- paste("mean(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", meas, ")])", sep="")
+    mean_grp <- eval(parse(text=as.name(mean_for_eval)))
+    all_mean_sd_sem$mean[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- mean_grp
+  
+    sd_for_eval <- paste("sd(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")])", sep="")
+    sd_grp <- eval(parse(text=as.name(sd_for_eval)))
+    all_mean_sd_sem$sd[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- sd_grp
+    sem_for_eval <- paste("sd(subset_with_clusters_matched$", clinical, "[which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")])/sqrt(length(which(subset_with_clusters_matched$Hydra_k3 == ", groups_list[num,2], ")))", sep="")
+    sem_grp <- eval(parse(text=as.name(sem_for_eval)))
+    all_mean_sd_sem$sem[which(all_mean_sd_sem$cl == clst & all_mean_sd_sem$clinical == clinical)] <- sem_grp
+  }
+}
+
+#remove _4factorv2 from names
+all_mean_sd_sem$clinical <- gsub("_4factorv2", "", all_mean_sd_sem$clinical)
+all_mean_sd_sem$clinical <- gsub("_", " ", all_mean_sd_sem$clinical)
+
+names(all_mean_sd_sem) <- c("cluster", "clinical", "mean", "sd", "sem")
+
+#Expand bifactor names
+clinical_bifactor_TONI_names <- c("anxious-misery", "psychosis", "externalizing", "fear", "overall psychopathology")
+new_names <- rep(clinical_bifactor_TONI_names, each = 4)
+all_mean_sd_sem$new_names <- new_names
+upper_case <- gsub(pattern = "\\b([a-z])", replacement = "\\U\\1", all_mean_sd_sem$new_names, perl = TRUE)
+all_mean_sd_sem$new_names <- upper_case
+
+#plot
+ggplot(data = all_mean_sd_sem, aes(x = clinical, y = mean, group = cluster)) + ylab("Mean Z-score")  +
+  ggtitle("Clinical Bifactor Scores") + 
+  geom_line(aes(color=cluster, size=.1), show.legend = F) +
+  geom_point(aes(color=cluster)) + 
+  geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), width=.1, size=1.5) +
+  annotate("text", x = 13, y = 0.45, label = "*", size = 20) + 
+  scale_x_discrete(limits=all_mean_sd_sem$clinical, labels=all_mean_sd_sem$new_names, name = " ") +
+  scale_y_continuous(limits=c(-0.7, 1)) +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 30, hjust = 1, angle = 60), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 30), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+###################################################
+#####              FDR Correction             #####
+###################################################
+
+## Extracting anovas with significant p values ####
+
+#model summary
+models_anova <- lapply(clinical_score_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(clinical_score_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[1]) #$coef[,"Pr(>F)"][2]) #get the p value for dep binarized
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+row.names(pfdr_anova) <- clinical_measure_names
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the NMF components that survive FDR correction
+clinical_fdr_anova <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+#make a data frame with names and fdr values (rounded to 3 decimals)
+clinical_names_and_fdr_values_anova <- data.frame(cbind(clinical_fdr_anova, round(pfdr_anova[pfdr_anova<0.05],3)))
+
+#add titles to names_and_fdr tables
+names(clinical_names_and_fdr_values_anova) <- c("clinical_measure", "p_FDR_corr")
+
+print("LM")
+print(clinical_names_and_fdr_values_anova)
+
+######################################################
+####Pairwise t-tests for anova-corrected lm means ####
+######################################################
+
+#put lm model into emmeans format
+clinical_emmodel_matched <- lapply(clinical_score_cluster_stats_matched, function(x) {as.list(ref_grid(x))})
+clinical_emmgrid_matched <- lapply(clinical_emmodel_matched, function(x) {as.emmGrid(x)})
+
+#run emmeans, do not include values that were not FDR corrected
+clinical_emmeans_matched <- lapply(clinical_emmgrid_matched, function(x) {emmeans(x, "Hydra_k3")})
+
+#run pairwise contrasts
+clinical_emmpairs_matched <- lapply(clinical_emmeans_matched, function(x) {pairs(x)})
+
+#Only include stuff that was fdr corrected (i.e., only keep parts of the model (or only display) ones that are corrected)
+clinical_emmpairs_matched_FDR_corrected <- clinical_emmpairs_matched[c(clinical_fdr_anova)]
+
+######Make table of contrasts, rows are names of clinical measures that are fdr corrected, columns are contrasts, values are pvalues
+
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- c("-1 - 1", "-1 - 2", "-1 - 3", "1 - 2", "1 - 3", "2 - 3")
+
+#go through each fdr corrected clinical measure, and extract p values
+contrast_table <- lapply(clinical_emmpairs_matched_FDR_corrected, function(x) {round(summary(x)$p.value,3)})
+
+#get the names of the clinical measures that were fdr corrected
+fdr_corrected_clinical <- names(contrast_table)
+
+#build table that will hold the name of the clinical measure and the p values
+pairwise_table <- data.frame(matrix(nrow = length(fdr_corrected_clinical), ncol = 6))
+
+#give the appropriate names
+rownames(pairwise_table) <- fdr_corrected_clinical
+colnames(pairwise_table) <- contrast_names
+
+#loop through each clinical measure, and manually assign the columns to be the p values
+for (measure in fdr_corrected_clinical)
+{
+  pair_pval <- contrast_table[[measure]]
+  pairwise_table[measure,] <- pair_pval
+}
+
+#get the 4factor2 out of the name
+fdr_corrected_clinical_gsub <- gsub("_4factorv2", "", fdr_corrected_clinical)
+rownames(pairwise_table) <- fdr_corrected_clinical_gsub
+
+#add FDR correction
+pairwise_table_with_fdr <- pairwise_table
+pairwise_table_with_fdr$p_FDR_corr <- clinical_names_and_fdr_values_anova$p_FDR_corr
+
+#print values
+
+print("LM pairwise contrasts with FDR corrected values, Bifactor scores")
+print(pairwise_table_with_fdr)
+
+
+```
+```{r clinical_in_nback_group}
+bifactor <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/clinical_bifactor_results.rds")
+
+#get names of measures
+clinical_measure_names <- names(bifactor)[grep("Bifactor", names(bifactor))] #get the names of all the columns with factorv2 in the name
+clinical_measure_names <- clinical_measure_names[-grep("_ar", clinical_measure_names)] #remove age-regressed, as this was done with HYDRA
+
+#remove all columns except bblid and measure info
+bifactor <- bifactor[,c("bblid", clinical_measure_names)]
+
+#read in nback
+nback <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/nback_results.rds")
+
+#merge groups
+subset_with_clusters_matched <- merge(bifactor, nback, by = c("bblid"))
+
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+#################################
+# Linear Model for each measure #
+##### Results stored in list ####
+#################################
+
+
+#lm  and mean centered
+clinical_score_cluster_stats_matched <- lapply(clinical_measure_names, function(x) 
+{
+   lm(substitute(i ~ Hydra_k3, list(i = as.name(x))), data = subset_with_clusters_matched)
+})
+names(clinical_score_cluster_stats_matched) <- clinical_measure_names
+
+
+#lm Hydra K3 Anova
+clinical_score_cluster_stats_anova_matched <- lapply(clinical_score_cluster_stats_matched, anova) 
+names(clinical_score_cluster_stats_anova_matched) <- clinical_measure_names
+
+#Effect size
+clinical_eff_size <- lapply(clinical_measure_names, function(measure){
+  clincal_cohen_pairwise_table <- cohen_d_allpairs(data_frame = subset_with_clusters_matched, measure = measure, hydra_cluster = num_clusters)
+})
+names(clinical_eff_size) <- clinical_measure_names
+
+print(clinical_eff_size)
+
+###################################################
+#####              FDR Correction             #####
+###################################################
+
+## Extracting anovas with significant p values ####
+
+#model summary
+models_anova <- lapply(clinical_score_cluster_stats_anova_matched, summary)
+
+#Pull p-values
+p_anova <- sapply(clinical_score_cluster_stats_anova_matched, function(v) v$"Pr(>F)"[1]) #$coef[,"Pr(>F)"][2]) #get the p value for dep binarized
+
+#Convert to data frame
+p_anova <- as.data.frame(p_anova)
+
+#Print original p-values to three decimal places
+p_round_anova <- round(p_anova,3)
+
+#FDR correct p-values
+pfdr_anova <- p.adjust(p_anova[,1],method="fdr")
+
+#Convert to data frame
+pfdr_anova <- as.data.frame(pfdr_anova)
+row.names(pfdr_anova) <- clinical_measure_names
+
+#To print fdr-corrected p-values to three decimal places
+pfdr_round_anova <- round(pfdr_anova,3)
+
+#List the NMF components that survive FDR correction
+clinical_fdr_anova <- row.names(pfdr_anova)[pfdr_anova<0.05]
+
+#make a data frame with names and fdr values (rounded to 3 decimals)
+clinical_names_and_fdr_values_anova <- data.frame(cbind(clinical_fdr_anova, round(pfdr_anova[pfdr_anova<0.05],3)))
+
+#add titles to names_and_fdr tables
+names(clinical_names_and_fdr_values_anova) <- c("clinical_measure", "p_FDR_corr")
+
+print("LM")
+print(clinical_names_and_fdr_values_anova)
+
+######################################################
+####Pairwise t-tests for anova-corrected lm means ####
+######################################################
+
+#put lm model into emmeans format
+clinical_emmodel_matched <- lapply(clinical_score_cluster_stats_matched, function(x) {as.list(ref_grid(x))})
+clinical_emmgrid_matched <- lapply(clinical_emmodel_matched, function(x) {as.emmGrid(x)})
+
+#run emmeans, do not include values that were not FDR corrected
+clinical_emmeans_matched <- lapply(clinical_emmgrid_matched, function(x) {emmeans(x, "Hydra_k3")})
+
+#run pairwise contrasts
+clinical_emmpairs_matched <- lapply(clinical_emmeans_matched, function(x) {pairs(x)})
+
+#Only include stuff that was fdr corrected (i.e., only keep parts of the model (or only display) ones that are corrected)
+clinical_emmpairs_matched_FDR_corrected <- clinical_emmpairs_matched[c(clinical_fdr_anova)]
+
+######Make table of contrasts, rows are names of clinical measures that are fdr corrected, columns are contrasts, values are pvalues
+
+#contrast names, -1 = controls, 1-3 are clusters
+contrast_names <- c("-1 - 1", "-1 - 2", "-1 - 3", "1 - 2", "1 - 3", "2 - 3")
+
+#go through each fdr corrected clinical measure, and extract p values
+contrast_table <- lapply(clinical_emmpairs_matched_FDR_corrected, function(x) {round(summary(x)$p.value,3)})
+
+#get the names of the clinical measures that were fdr corrected
+fdr_corrected_clinical <- names(contrast_table)
+
+#build table that will hold the name of the clinical measure and the p values
+pairwise_table <- data.frame(matrix(nrow = length(fdr_corrected_clinical), ncol = 6))
+
+#give the appropriate names
+rownames(pairwise_table) <- fdr_corrected_clinical
+colnames(pairwise_table) <- contrast_names
+
+#loop through each clinical measure, and manually assign the columns to be the p values
+for (measure in fdr_corrected_clinical)
+{
+  pair_pval <- contrast_table[[measure]]
+  pairwise_table[measure,] <- pair_pval
+}
+
+#get the 4factor2 out of the name
+fdr_corrected_clinical_gsub <- gsub("_4factorv2", "", fdr_corrected_clinical)
+rownames(pairwise_table) <- fdr_corrected_clinical_gsub
+
+#add FDR correction
+pairwise_table_with_fdr <- pairwise_table
+pairwise_table_with_fdr$p_FDR_corr <- clinical_names_and_fdr_values_anova$p_FDR_corr
+
+#print values
+
+print("LM pairwise contrasts with FDR corrected values, Bifactor scores")
+print(pairwise_table_with_fdr)
+sapply(clinical_emmpairs_matched_FDR_corrected, function(x) {print(x)})
+```
+
+```{r cnb_in_WGvsImaging_group_just_MDD_v_TD}
+
+#read in cnb whole group dataframe
+subset_with_clusters_matched <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/cnb_results.rds")
+
+#read in nback data frame
+nback <- readRDS("/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/rds/nback_results.rds")
+
+#add column to whole data frame indicating whether or not it is in nback data frame
+subset_with_clusters_matched$imaging <-
+  ifelse(subset_with_clusters_matched$bblid %in% nback$bblid, 1, 0)
+
+df_for_graph <- data.frame()
+clusters <- names(subset_with_clusters_matched[grep ("Hydra", names(subset_with_clusters_matched))])
+
+cnb_measure_names <- names(subset_with_clusters_matched)[grep("_z", names(subset_with_clusters_matched))] #get the names of all the columns with _z in the name
+
+
+
+df_for_plotting <- data.frame(matrix(0, 26, 8))
+row.names(df_for_plotting) <- cnb_measure_names
+colnames(df_for_plotting) <- c("TD_WG_mean", "DY_WG_mean", "TD_Imaging_mean", "DY_Imaging_mean", "TD_WG_sd", "DY_WG_sd", "TD_Imaging_sd", "DY_Imaging_sd")
+
+#means
+df_for_plotting$TD_WG_mean <- colMeans(subset_with_clusters_matched[which((subset_with_clusters_matched$dep_binarized == -1) & (subset_with_clusters_matched$imaging == 0)),][,cnb_measure_names])
+
+df_for_plotting$DY_WG_mean <- colMeans(subset_with_clusters_matched[which((subset_with_clusters_matched$dep_binarized == 1) & (subset_with_clusters_matched$imaging == 0)),][,cnb_measure_names])
+
+df_for_plotting$TD_Imaging_mean <- colMeans(subset_with_clusters_matched[which((subset_with_clusters_matched$dep_binarized == -1) & (subset_with_clusters_matched$imaging == 1)),][,cnb_measure_names])
+
+df_for_plotting$DY_Imaging_mean <- colMeans(subset_with_clusters_matched[which((subset_with_clusters_matched$dep_binarized == 1) & (subset_with_clusters_matched$imaging == 1)),][,cnb_measure_names])
+
+#sds
+df_for_plotting$TD_WG_sd <- colSds(as.matrix(subset_with_clusters_matched[which((subset_with_clusters_matched$dep_binarized == -1) & (subset_with_clusters_matched$imaging == 0)),][,cnb_measure_names]))
+
+df_for_plotting$DY_WG_sd <- colSds(as.matrix(subset_with_clusters_matched[which((subset_with_clusters_matched$dep_binarized == 1) & (subset_with_clusters_matched$imaging == 0)),][,cnb_measure_names]))
+
+df_for_plotting$TD_Imaging_sd <- colSds(as.matrix(subset_with_clusters_matched[which((subset_with_clusters_matched$dep_binarized == -1) & (subset_with_clusters_matched$imaging == 1)),][,cnb_measure_names]))
+
+df_for_plotting$DY_Imaging_sd <- colSds(as.matrix(subset_with_clusters_matched[which((subset_with_clusters_matched$dep_binarized == 1) & (subset_with_clusters_matched$imaging == 1)),][,cnb_measure_names]))
+
+groups<- c("TD_WG", "DY_WG", "TD_Imaging", "DY_Imaging")
+#melt df so it is in a good position to be plotted
+all_mean_sd <- data.frame(rep(groups, each = 26), rep(cnb_measure_names, 4), rep(0, 1), rep(0, 1))
+names(all_mean_sd) <- c("group", "cnb", "mean", "sd")
+all_mean_sd$mean <- rbind(as.matrix(df_for_plotting$TD_WG_mean), as.matrix(df_for_plotting$DY_WG_mean), as.matrix(df_for_plotting$TD_Imaging_mean), as.matrix(df_for_plotting$DY_Imaging_mean))
+all_mean_sd$sd <- rbind(as.matrix(df_for_plotting$TD_WG_sd), as.matrix(df_for_plotting$DY_WG_sd), as.matrix(df_for_plotting$TD_Imaging_sd), as.matrix(df_for_plotting$DY_Imaging_sd))
+
+#clean up names
+#newNames <- toupper(gsub("_z", "", cnb_measure_names))
+#newNames <- gsub("_S", "", newNames)
+cnb_measure_names_no_z <- toupper(gsub("_z", "", cnb_measure_names))
+all_mean_sd$cnb <- toupper(gsub("_z", "", cnb_measure_names_no_z))
+all_mean_sd$group <- gsub("_", " ", all_mean_sd$group)
+
+#plot
+ggplot(data = all_mean_sd, aes(x = factor(cnb, level = cnb_measure_names_no_z), y = mean, group = group)) + ylab("Mean Z-score") + xlab("CNB Measures Scores") + 
+  ggtitle("CNB Scores by Diagnosis and Imaging Subgroups") +
+  geom_line(aes(color=group, size=.1), show.legend = F) +
+  geom_point(aes(color=group)) + 
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.1, size=1.5) +
+  scale_x_discrete(name = "CNB Measures") +
+  guides(colour = guide_legend(override.aes = list(size=10))) +
+  theme(axis.text.x = element_text(size = 20, angle = 40, vjust = 0.5),
+        #axis.text.x = element_blank(), 
+        axis.text.y = element_text(size = 30),
+        title = element_text(size = 30), 
+        legend.text = element_text(size = 30), 
+        plot.title = element_text(size=35),
+        legend.title=element_blank())
+
+```
+
+
+
+
+
