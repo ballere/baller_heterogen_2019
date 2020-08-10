@@ -1,0 +1,567 @@
+_**Author**_: Erica Baller, MD, MS
+
+_**Date**_: 7/31/2018
+
+_**Replicator**_: TBD
+
+**Goal**: Matchit is a great tool to use when you have two groups you'd like to match on a particular feature (or multiple features).
+
+**Published examples**: From Kristin Linn (https://upenncnip.slack.com/messages/C0833QVM1/files/F0ET1PVUH/[MatchIt Rmarkdown From JAMA]) [It's on the right-hand side of the slack channel in pdf format]
+
+**References for R code**:
+(https://www.rdocumentation.org/packages/MatchIt/versions/1.0-1/topics/matchit)[RMarkdown Documentation])
+
+**Input data format**:  Please make sure you have a data frame read in to a variable (for example, one of the BBL .csv files)
+
+**Sample input data**: /data/joy/BBL/projects/ballerDepHeterogen/data/n9498_demographics_go1_20161212.csv
+
+**Sample script**: take a look (https://github.com/PennBBL/ballerDepHeterogenScripts/blob/master/ballerDepHeterogenScripts/Prep_for_hydra_double_matching.Rmd)[Erica's MatchIt Script])
+
+**Possible bugs/fixes:** Make sure the variables you are trying to match on are in "numeric" and not factor format
+
+**In this tutorial, I'll provide basic code for** 
+
+A. a simple match on **ONE** variable
+
+B. a simple match on **MULTIPLE** variables
+
+C. a complex, 2 step match for **enriching a data set with imaging subjects**
+
+--------------------------------------------------
+
+#Libraries to include
+
+library(MatchIt)
+library(visreg)
+library(mgcv)
+library(tableone)
+library(dplyr)
+library(plm)
+
+--------------------------------------------------
+
+**A. Simple Match on _ONE_ variable **
+
+*for the rest of this pseudocode, df = data frame your data are contained in
+
+*I'll use age as my variable to match on
+
+*My groups are depressed versus non_depressed 
+
+*dep_binarized is my variable that is a 0 if TD, 1 if depressed
+
+--------------------------------------------------
+
+#Set your unmatched data frame to your original data frame
+
+data.unmatched = df
+data.unmatched$unmatchedRows =rownames(data.unmatched)
+dataset = data.unmatched
+
+# Some preprocessing- grab some demographic features you'd like to check
+dataset = dplyr::select(dataset, sex, age_in_years, ageSq, medu1, race_binarized, dep_binarized, unmatchedRows)
+
+#Make sure all of your variables are numeric, for example, sex, shown below
+
+#"male": 1, "female": 0
+dataset$sex = 1*(dataset$sex==1)
+
+# Dep: 1, Health = 0 
+dataset$dep_binarized = 1*(dataset$dep_binarized==1)
+
+# Plot prematch
+plot(dataset$age_in_years,jitter(dataset$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age")
+
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+#starting the match (there are many distances we use, but mahalanobis seems to work for this, could also try method=exact if you want "perfection")
+
+m_age.out <-matchit(dep_binarized ~ age_in_years, data=dataset, method="nearest", distance="mahalanobis")
+
+#plot 
+plot(m_age.out)
+
+#return the matched dataset 
+m_age.data <- match.data(m_age.out)
+
+# Test for significant difference in age between groups - optional
+t.test(age_in_years~dep_binarized, data=m_age.data)
+
+# Re-plot
+
+plot(m_age.data$age_in_years,jitter(m_age.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age age matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+# Make the final matched data set
+data_age.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_age.data$unmatchedRows,]
+data_age.matched$unmatchedRows = NULL
+saveRDS(data_age.matched, file = "whatever your filename is")
+
+### Print a demographics table to check that your values are matched correctly
+
+#subset demographics
+listVars <- c("Race_binarized", "Sex", "Maternal Ed", "Age", "Depression") #Race 1 = caucasian, Maternal Ed = years, age = years, dep 1 = dep, 0 = non_dep
+#matched_versions <- c("data_all", "data_age", "data_sex", "data_medu", "data_race", "data_age_and_sex")
+matched_versions <- c("data_age")
+
+for(vers in matched_versions) {
+  demo_string_to_eval <- paste("data.frame(", vers , ".matched$race_binarized, ", vers, ".matched$sex, ", vers, ".matched$medu1, ", vers, ".matched$age_in_years, ", vers, ".matched$dep_binarized)", sep ="")
+  demo_data.matched <- eval(parse(text=as.name(demo_string_to_eval)))
+  names(demo_data.matched) <- c(listVars)
+  
+  #Change categorical values to have names
+  demo_data.matched$Depression <- ifelse(demo_data.matched$Depression == 1, "Depressed", "Non-depressed")
+  demo_data.matched$Race <- ifelse(demo_data.matched$Race == 1, "Caucasian", "Non-caucasian")
+  demo_data.matched$Sex <- ifelse(demo_data.matched$Sex == 1, "Male", "Female")
+  
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+  
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex")
+  
+  #create demographics table
+  demo_data.matched_table <- CreateTableOne(vars = listVars, data = demo_data.matched, factorVars = cat_variables, strata = c("Depression"))
+  print(paste("Version matching on ", vers))
+  print(demo_data.matched_table, showAllLevels = TRUE)
+  
+  #rename the data***.matched to have an imaging end to it, so we can use it to combine
+  rename_string_to_eval <- paste(vers, ".matched_imaging <- ", vers, ".matched", sep = "")
+  eval(parse(text = as.name(rename_string_to_eval)))
+}
+
+--------------------------------------------------
+
+## B) A Simple Match on MULTIPLE variables (example age and sex)
+
+--------------------------------------------------
+
+#Set your unmatched data frame to your original data frame
+
+data.unmatched = df
+data.unmatched$unmatchedRows =rownames(data.unmatched)
+dataset = data.unmatched
+
+# Some preprocessing- grab some demographic features you'd like to check
+dataset = dplyr::select(dataset, sex, age_in_years, ageSq, medu1, race_binarized, dep_binarized, unmatchedRows)
+
+#Make sure all of your variables are numeric, for example, sex, shown below
+
+#"male": 1, "female": 0
+dataset$sex = 1*(dataset$sex==1)
+
+#dataset = dplyr::filter(dataset, !is.na(group))
+# Dep: 1, Health = 0 
+dataset$dep_binarized = 1*(dataset$dep_binarized==1)
+
+# Plot prematch
+plot(dataset$age_in_years,jitter(dataset$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age")
+
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+#starting the match (there are many distances we use, but mahalanobis seems to work for this, could also try method=exact if you want "perfection")
+
+m_age_and_sex.out <-matchit(dep_binarized ~ age_in_years + sex, data=dataset, method="nearest", distance="mahalanobis")
+
+#plot
+plot(m_age_and_sex.out)
+
+#return the matched dataset
+m_age_and_sex.data <- match.data(m_age_and_sex.out)
+
+# Test for significant difference in age between groups - optional
+t.test(age_in_years~dep_binarized, data=m_age_and_sex.data)
+t.test(sex~dep_binarized, data=m_age_and_sex.data)
+
+# Re-plot
+
+plot(m_age_and_sex.data$age_in_years,jitter(m_age_and_sex.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age age matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+# Make the final matched data set
+data_age_and_sex.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_age_and_sex.data$unmatchedRows,]
+data_age_and_sex.matched$unmatchedRows = NULL
+saveRDS(data_age_and_sex.matched, file = "whatever your filename is")
+
+### Print a demographics table to check that your values are matched correctly
+
+#subset demographics
+listVars <- c("Race_binarized", "Sex", "Maternal Ed", "Age", "Depression") #Race 1 = caucasian, Maternal Ed = years, age = years, dep 1 = dep, 0 = non_dep
+#matched_versions <- c("data_all", "data_age", "data_sex", "data_medu", "data_race", "data_age_and_sex")
+matched_versions <- c("data_age", "data_age_and_sex")
+
+for(vers in matched_versions) {
+  demo_string_to_eval <- paste("data.frame(", vers , ".matched$race_binarized, ", vers, ".matched$sex, ", vers, ".matched$medu1, ", vers, ".matched$age_in_years, ", vers, ".matched$dep_binarized)", sep ="")
+  demo_data.matched <- eval(parse(text=as.name(demo_string_to_eval)))
+  names(demo_data.matched) <- c(listVars)
+
+  #Change categorical values to have names
+  demo_data.matched$Depression <- ifelse(demo_data.matched$Depression == 1, "Depressed", "Non-depressed")
+  demo_data.matched$Race <- ifelse(demo_data.matched$Race == 1, "Caucasian", "Non-caucasian")
+  demo_data.matched$Sex <- ifelse(demo_data.matched$Sex == 1, "Male", "Female")
+
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex")
+
+  #create demographics table
+  demo_data.matched_table <- CreateTableOne(vars = listVars, data = demo_data.matched, factorVars = cat_variables, strata = c("Depression"))
+  print(paste("Version matching on ", vers))
+  print(demo_data.matched_table, showAllLevels = TRUE)
+
+  #rename the data***.matched to have an imaging end to it, so we can use it to combine
+  rename_string_to_eval <- paste(vers, ".matched_imaging <- ", vers, ".matched", sep = "")
+  eval(parse(text = as.name(rename_string_to_eval)))
+}
+
+--------------------------------------------------
+
+## C) A complex, 2 step match for enriching a data set with imaging subjects 
+
+
+Steps for this section:
+
+1. Match depressed w/ imaging to controls w/imaging
+
+2. Removed these from full group
+
+3. Match remaining depressed without imaging to controls who weren't previously matched
+
+4. Combine depressed w/imaging to depressed w/out imaging and controls w/imaging to controls w/out imaging
+
+5. Check distribution of these groups and make sure you get the same # of people in each group as you would in Step A or B
+
+*of note, the rest of this script assumes that df is subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED
+
+--------------------------------------------------
+#########Let's start by matching only depressed people with imaging to controls with imaging###
+#This match tries 6 versions (matching on age+medu+race+sex, age alone, sex alone, medu alone, race alone, age_and_sex together
+
+data.unmatched = subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED #(this was my df)
+data.unmatched$unmatchedRows =rownames(data.unmatched)
+dataset = data.unmatched
+
+# Some preprocessing
+dataset = dplyr::select(dataset, sex, age_in_years, ageSq, medu1, race_binarized, dep_binarized, unmatchedRows)
+
+# Dep: 1, Health = 0 
+dataset$dep_binarized = 1*(dataset$dep_binarized==1) 
+
+#"male": 1, "female": 0
+dataset$sex = 1*(dataset$sex==1)
+
+# Remove subjects with NA for maternal edu
+dataset <- dataset[!is.na(dataset$medu1),]
+
+# Plot prematch
+plot(dataset$age_in_years,jitter(dataset$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age")
+
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+#Will do a variety of matchings, using all variables combined, then age, sex, medu and race separately, than combinging age and sex 
+m_all.out <-matchit(dep_binarized ~ age_in_years + race_binarized + medu1 + sex, data=dataset, method="nearest", distance="mahalanobis")
+m_age.out <-matchit(dep_binarized ~ age_in_years, data=dataset, method="nearest", distance="mahalanobis")
+m_sex.out <-matchit(dep_binarized ~ sex, data=dataset, method="nearest", distance="mahalanobis")
+m_medu.out <-matchit(dep_binarized ~ medu1, data=dataset, method="nearest", distance="mahalanobis")
+m_race.out <-matchit(dep_binarized ~ race_binarized, data=dataset, method="nearest", distance="mahalanobis")
+m_age_and_sex.out <-matchit(dep_binarized ~ age_in_years + sex, data=dataset, method="nearest", distance="mahalanobis")
+
+plot(m_all.out)
+plot(m_age.out)
+plot(m_sex.out)
+plot(m_medu.out)
+plot(m_race.out)
+plot(m_age_and_sex.out)
+
+#return the matched dataset 
+m_all.data <- match.data(m_all.out)
+m_age.data <- match.data(m_age.out)
+m_sex.data <- match.data(m_sex.out)
+m_medu.data <- match.data(m_medu.out)
+m_race.data <- match.data(m_race.out)
+m_age_and_sex.data <- match.data(m_age_and_sex.out)
+
+# Test for significant difference in age between groups
+t.test(age_in_years~dep_binarized, data=m.data)
+t.test(race_binarized~dep_binarized, data=m.data)
+t.test(sex~dep_binarized, data=m.data)
+t.test(medu1~dep_binarized, data=m.data)
+
+# Re-plot
+plot(m_all.data$age_in_years,jitter(m_all.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age all matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+plot(m_age.data$age_in_years,jitter(m_age.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age age matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+plot(m_sex.data$age_in_years,jitter(m_sex.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age sex matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+plot(m_medu.data$age_in_years,jitter(m_medu.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age medu matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+plot(m_race.data$age_in_years,jitter(m_race.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age race matched ")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+plot(m_age_and_sex.data$age_in_years,jitter(m_age_and_sex.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age age and sex matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+
+# Make the final matched data set
+data_all.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_all.data$unmatchedRows,]
+data_all.matched$unmatchedRows = NULL
+saveRDS(data_all.matched, file='your file')
+
+data_age.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_age.data$unmatchedRows,]
+data_age.matched$unmatchedRows = NULL
+saveRDS(data_age.matched, file='your file')
+
+data_sex.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_sex.data$unmatchedRows,]
+data_sex.matched$unmatchedRows = NULL
+saveRDS(data_sex.matched, file='your file')
+
+data_medu.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_medu.data$unmatchedRows,]
+data_medu.matched$unmatchedRows = NULL
+saveRDS(data_medu.matched, file='your file')
+
+data_race.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_race.data$unmatchedRows,]
+data_race.matched$unmatchedRows = NULL
+saveRDS(data_race.matched, file='your file')
+
+data_age_and_sex.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_age_and_sex.data$unmatchedRows,]
+data_age_and_sex.matched$unmatchedRows = NULL
+saveRDS(data_age_and_sex.matched, file='your file')
+
+
+Demographic tables for matched imaging group
+##############
+#Demo Tablets#
+##############
+#Make table 1 (demographics) for matched data
+#subset demographics
+listVars <- c("Race_binarized", "Sex", "Maternal Ed", "Age", "Depression") #Race 1 = caucasian, Maternal Ed = years, age = years, dep 1 = dep, 0 = non_dep
+matched_versions <- c("data_all", "data_age", "data_sex", "data_medu", "data_race", "data_age_and_sex")
+
+for(vers in matched_versions) {
+  demo_string_to_eval <- paste("data.frame(", vers , ".matched$race_binarized, ", vers, ".matched$sex, ", vers, ".matched$medu1, ", vers, ".matched$age_in_years, ", vers, ".matched$dep_binarized)", sep ="")
+  demo_data.matched <- eval(parse(text=as.name(demo_string_to_eval)))
+  names(demo_data.matched) <- c(listVars)
+  
+  #Change categorical values to have names
+  demo_data.matched$Depression <- ifelse(demo_data.matched$Depression == 1, "Depressed", "Non-depressed")
+  demo_data.matched$Race <- ifelse(demo_data.matched$Race == 1, "Caucasian", "Non-caucasian")
+  demo_data.matched$Sex <- ifelse(demo_data.matched$Sex == 1, "Male", "Female")
+  
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+  
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex")
+  
+  #create demographics table
+  demo_data.matched_table <- CreateTableOne(vars = listVars, data = demo_data.matched, factorVars = cat_variables, strata = c("Depression"))
+  print(paste("Version matching on ", vers))
+  print(demo_data.matched_table, showAllLevels = TRUE)
+  
+  #rename the data***.matched to have an imaging end to it, so we can use it to combine
+  rename_string_to_eval <- paste(vers, ".matched_imaging <- ", vers, ".matched", sep = "")
+  eval(parse(text = as.name(rename_string_to_eval)))
+}
+############Remove people from main group who have imaging ##############
+people_from_imaging_match_all <- data_all.matched$bblid
+people_from_imaging_match_age <- data_age.matched$bblid
+people_from_imaging_match_sex <- data_sex.matched$bblid
+people_from_imaging_match_medu <- data_medu.matched$bblid
+people_from_imaging_match_race <- data_race.matched$bblid
+people_from_imaging_match_age_and_sex <- data_age_and_sex.matched$bblid
+
+subset_people_who_were_not_included_in_imaging_match_all <- subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED[!(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$bblid %in% c(people_from_imaging_match_all)),]
+subset_people_who_were_not_included_in_imaging_match_age <- subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED[!(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$bblid %in% c(people_from_imaging_match_age)),]
+subset_people_who_were_not_included_in_imaging_match_sex <- subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED[!(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$bblid %in% c(people_from_imaging_match_sex)),]
+subset_people_who_were_not_included_in_imaging_match_medu <- subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED[!(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$bblid %in% c(people_from_imaging_match_medu)),]
+subset_people_who_were_not_included_in_imaging_match_race <- subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED[!(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$bblid %in% c(people_from_imaging_match_race)),]
+subset_people_who_were_not_included_in_imaging_match_age_and_sex <- subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED[!(subset_dep_or_no_psych_and_no_medicalratingExclude_DEPBINARIZED$bblid %in% c(people_from_imaging_match_age_and_sex)),]
+
+###############Match remainder ####################
+data.unmatched = subset_people_who_were_not_included_in_imaging_match_age_and_sex[complete.cases(subset_people_who_were_not_included_in_imaging_match_age_and_sex[14:39]),]
+data.unmatched$unmatchedRows =rownames(data.unmatched)
+dataset = data.unmatched
+
+# Some preprocessing
+dataset = dplyr::select(dataset, sex, age_in_years, ageSq, medu1, race_binarized, dep_binarized, unmatchedRows)
+
+# Dep: 1, Health = 0 
+dataset$dep_binarized = 1*(dataset$dep_binarized==1) 
+
+#"male": 1, "female": 0
+dataset$sex = 1*(dataset$sex==1)
+
+# Remove subjects with NA for maternal edu
+dataset <- dataset[!is.na(dataset$medu1),]
+
+# Plot prematch
+plot(dataset$age_in_years,jitter(dataset$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age")
+
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+#Will do a variety of matchings, using all variables combined, then age, sex, medu and race separately
+m_all.out <-matchit(dep_binarized ~ age_in_years + race_binarized + medu1 + sex, data=dataset, method="nearest", distance="mahalanobis")
+m_age.out <-matchit(dep_binarized ~ age_in_years, data=dataset, method="nearest", distance="mahalanobis")
+m_sex.out <-matchit(dep_binarized ~ sex, data=dataset, method="nearest", distance="mahalanobis")
+m_medu.out <-matchit(dep_binarized ~ medu1, data=dataset, method="nearest", distance="mahalanobis")
+m_race.out <-matchit(dep_binarized ~ race_binarized, data=dataset, method="nearest", distance="mahalanobis")
+m_age_and_sex.out <-matchit(dep_binarized ~ age_in_years + sex, data=dataset, method="nearest", distance="mahalanobis")
+
+#plot
+
+plot(m_all.out)
+plot(m_age.out)
+plot(m_sex.out)
+plot(m_medu.out)
+plot(m_race.out)
+plot(m_age_and_sex.out)
+
+#return the matched dataset
+m_all.data <- match.data(m_all.out)
+m_age.data <- match.data(m_age.out)
+m_sex.data <- match.data(m_sex.out)
+m_medu.data <- match.data(m_medu.out)
+m_race.data <- match.data(m_race.out)
+m_age_and_sex.data <- match.data(m_age_and_sex.out)
+
+# Re-plot
+plot(m_all.data$age_in_years,jitter(m_all.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age all matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+plot(m_age.data$age_in_years,jitter(m_age.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age age matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+plot(m_sex.data$age_in_years,jitter(m_sex.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age sex matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+plot(m_medu.data$age_in_years,jitter(m_medu.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age medu matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+plot(m_race.data$age_in_years,jitter(m_race.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age race matched ")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+plot(m_age_and_sex.data$age_in_years,jitter(m_age_and_sex.data$medu1, factor=3), pch=c(15, 7, 18, 9), col=c(1,2,3,4), ylab="Maternal Edu", xlab="Age age and sex matched")
+legend("bottomright",c("Non-white, non-depressed", "Non-white, depressed", "White, non-depressed", "White, depressed"),pch=c(15, 7, 18, 9), col=c(1,2,3,4))
+
+
+# Make the final matched data set
+data_all.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_all.data$unmatchedRows,]
+data_all.matched$unmatchedRows = NULL
+saveRDS(data_all.matched, file='/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/hydra_matched/matched_imaging_plus_non_imaging/Matched_all_after_imaging_match.rds')
+
+data_age.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_age.data$unmatchedRows,]
+data_age.matched$unmatchedRows = NULL
+saveRDS(data_age.matched, file='/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/hydra_matched/matched_imaging_plus_non_imaging/Matched_age_after_imaging_match.rds')
+
+data_sex.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_sex.data$unmatchedRows,]
+data_sex.matched$unmatchedRows = NULL
+saveRDS(data_sex.matched, file='/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/hydra_matched/matched_imaging_plus_non_imaging/Matched_sex_after_imaging_match.rds')
+
+data_medu.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_medu.data$unmatchedRows,]
+data_medu.matched$unmatchedRows = NULL
+saveRDS(data_medu.matched, file='/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/hydra_matched/matched_imaging_plus_non_imaging/Matched_medu_after_imaging_match.rds')
+
+data_race.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_race.data$unmatchedRows,]
+data_race.matched$unmatchedRows = NULL
+saveRDS(data_race.matched, file='/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/hydra_matched/matched_imaging_plus_non_imaging/Matched_race_after_imaging_match.rds')
+
+data_age_and_sex.matched = data.unmatched[data.unmatched$unmatchedRows%in%m_age_and_sex.data$unmatchedRows,]
+data_age_and_sex.matched$unmatchedRows = NULL
+saveRDS(data_age_and_sex.matched, file='/Users/eballer/BBL/from_chead/ballerDepHeterogen/results/hydra_matched/matched_imaging_plus_non_imaging/matched_age_and_sex_after_imaging_match.rds')
+
+##Demographics table of non-imaging people
+
+##############
+#Demo Tablets#
+##############
+#Make table 1 (demographics) for matched data after removing imaging 
+
+#subset demographics
+listVars <- c("Race_binarized", "Sex", "Maternal Ed", "Age", "Depression") #Race 1 = caucasian, Maternal Ed = years, age = years, dep 1 = dep, 0 = non_dep
+matched_versions <- c("data_all", "data_age", "data_sex", "data_medu", "data_race", "data_age_and_sex")
+
+for(vers in matched_versions) {
+  demo_string_to_eval <- paste("data.frame(", vers , ".matched$race_binarized, ", vers, ".matched$sex, ", vers, ".matched$medu1, ", vers, ".matched$age_in_years, ", vers, ".matched$dep_binarized)", sep ="")
+  demo_data.matched <- eval(parse(text=as.name(demo_string_to_eval)))
+  names(demo_data.matched) <- c(listVars)
+  
+  #Change categorical values to have names
+  demo_data.matched$Depression <- ifelse(demo_data.matched$Depression == 1, "Depressed", "Non-depressed")
+  demo_data.matched$Race <- ifelse(demo_data.matched$Race == 1, "Caucasian", "Non-caucasian")
+  demo_data.matched$Sex <- ifelse(demo_data.matched$Sex == 1, "Male", "Female")
+  
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+  
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex")
+  
+  #create demographics table
+  demo_data.matched_table <- CreateTableOne(vars = listVars, data = demo_data.matched, factorVars = cat_variables, strata = c("Depression"))
+  print(paste("Version matching on ", vers))
+  print(demo_data.matched_table, showAllLevels = TRUE)
+  
+  #rename the data***.matched to have a non-imaging end to it, so we can use it to combine
+  rename_string_to_eval <- paste(vers, ".matched_non_imaging <- ", vers, ".matched", sep = "")
+  eval(parse(text = as.name(rename_string_to_eval)))
+  
+}
+###############Combine imaging matched and imaging non-matched groups ####################
+
+#first remove imaging info from the imaging group (the columns to remove are specific to my analysis
+data_all.matched_imaging_without_imaging_data_in_data_frame <- data_all.matched_imaging[,-c(77:89)]
+data_age.matched_imaging_without_imaging_data_in_data_frame <- data_age.matched_imaging[,-c(77:89)]
+data_sex.matched_imaging_without_imaging_data_in_data_frame <- data_sex.matched_imaging[,-c(77:89)]
+data_medu.matched_imaging_without_imaging_data_in_data_frame <- data_medu.matched_imaging[,-c(77:89)]
+data_race.matched_imaging_without_imaging_data_in_data_frame <- data_race.matched_imaging[,-c(77:89)]
+data_age_and_sex.matched_imaging_without_imaging_data_in_data_frame <- data_age_and_sex.matched_imaging[,-c(77:89)]
+
+imaging_plus_non_imaging_matched_groups_data_all <- rbind(data_all.matched_imaging_without_imaging_data_in_data_frame, data_all.matched_non_imaging)
+imaging_plus_non_imaging_matched_groups_data_age <- rbind(data_age.matched_imaging_without_imaging_data_in_data_frame, data_age.matched_non_imaging)
+imaging_plus_non_imaging_matched_groups_data_sex <- rbind(data_sex.matched_imaging_without_imaging_data_in_data_frame, data_sex.matched_non_imaging)
+imaging_plus_non_imaging_matched_groups_data_medu <- rbind(data_medu.matched_imaging_without_imaging_data_in_data_frame, data_medu.matched_non_imaging)
+imaging_plus_non_imaging_matched_groups_data_race <- rbind(data_race.matched_imaging_without_imaging_data_in_data_frame, data_race.matched_non_imaging)
+imaging_plus_non_imaging_matched_groups_data_age_and_sex <- rbind(data_age_and_sex.matched_imaging_without_imaging_data_in_data_frame, data_age_and_sex.matched_non_imaging)
+
+####Demographics check#####
+#subset demographics
+listVars <- c("Race_binarized", "Sex", "Maternal Ed", "Age", "Depression") #Race 1 = caucasian, Maternal Ed = years, age = years, dep 1 = dep, 0 = non_dep
+matched_versions <- c("data_all", "data_age", "data_sex", "data_medu", "data_race", "data_age_and_sex")
+short <- "imaging_plus_non_imaging_matched_groups_"
+
+for(vers in matched_versions) {
+  demo_string_to_eval <- paste("data.frame(", short, vers , "$race_binarized, ", short, vers, "$sex, ", short, vers, "$medu1, ", short, vers, "$age_in_years, ", short, vers, "$dep_binarized)", sep ="")
+  demo_data.matched <- eval(parse(text=as.name(demo_string_to_eval)))
+  names(demo_data.matched) <- c(listVars)
+  
+  #Change categorical values to have names
+  demo_data.matched$Depression <- ifelse(demo_data.matched$Depression == 1, "Depressed", "Non-depressed")
+  demo_data.matched$Race <- ifelse(demo_data.matched$Race == 1, "Caucasian", "Non-caucasian")
+  demo_data.matched$Sex <- ifelse(demo_data.matched$Sex == 1, "Male", "Female")
+  
+  #make variable list
+  table_titles <- c("Non-depressed", "Depressed", "P-value")
+  
+  #Define Categorical Variables
+  cat_variables <- c("Race", "Depression", "Sex")
+  
+  #create demographics table
+  demo_data.matched_table <- CreateTableOne(vars = listVars, data = demo_data.matched, factorVars = cat_variables, strata = c("Depression"))
+  print(paste("Version matching on ", vers))
+  print(demo_data.matched_table, showAllLevels = TRUE)
+  
+  #rename the data***.matched to have a non-imaging end to it, so we can use it to combine
+  rename_string_to_eval <- paste(vers, ".matched_non_imaging <- ", vers, ".matched", sep = "")
+  eval(parse(text = as.name(rename_string_to_eval)))
+  
+}
+
+--------------------------------------------------
+
